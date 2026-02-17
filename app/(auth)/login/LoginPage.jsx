@@ -86,11 +86,8 @@ export default function DealerLoginPage({
         title: 'Signed in successfully'
       });
 
-      // 4. Role based redirection
-      if (result.role === "admin") router.push("/admin/dashboard");
-      else if (result.role === "dealer") router.push("/dealer/dashboard");
-      else if (result.role === "super_admin") router.push("/super-admin/dashboard");
-      else router.push("/dashboard");
+      // 4. Redirect to unified dashboard
+      router.push("/dashboard");
 
     } catch (err) {
       Swal.fire({
@@ -130,9 +127,8 @@ export default function DealerLoginPage({
         toast: true
       });
 
-      // 5. Redirect
-      if (result.role === "admin") router.push("/admin/dashboard");
-      else router.push("/dashboard");
+      // 5. Redirect to unified dashboard
+      router.push("/dashboard");
 
     } catch (err) {
       Swal.fire({

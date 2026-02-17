@@ -1,13 +1,13 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Input from "../../common/Input";
+import Input from "./Input";
 import Image from 'next/image';
 import { Search, Bell, ChevronDown, Menu } from 'lucide-react';
-import ThemeSwitcher from '../../common/ThemeSwitcher';
+import ThemeSwitcher from './ThemeSwitcher';
 
-import { useAuth } from "../../../context/AuthContext";
-import { useNotifications } from "../../../context/NotificationContext";
+import { useAuth } from "../../context/AuthContext";
+import { useNotifications } from "../../context/NotificationContext";
 
 const TopBar = ({ title, onMenuClick }) => {
   const { user } = useAuth();
@@ -33,28 +33,28 @@ const TopBar = ({ title, onMenuClick }) => {
 
     if (user.role === 'super_admin') {
       allItems = [
-        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/super-admin/quotes', data: q })),
-        ...dealerships.map(d => ({ type: 'Dealership', title: d.name, subtitle: d.location, url: '/super-admin/dealerships', data: d })),
-        ...managers.map(m => ({ type: 'Manager', title: m.name, subtitle: m.email, url: '/super-admin/users', data: m })),
-        ...sellers.map(s => ({ type: 'Seller', title: s.name, subtitle: s.email, url: '/super-admin/users', data: s })),
-        ...users.map(u => ({ type: 'User', title: u.name, subtitle: u.email, url: '/super-admin/users', data: u })),
+        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/quotes', data: q })),
+        ...dealerships.map(d => ({ type: 'Dealership', title: d.name, subtitle: d.location, url: '/dealerships', data: d })),
+        ...managers.map(m => ({ type: 'Manager', title: m.name, subtitle: m.email, url: '/users', data: m })),
+        ...sellers.map(s => ({ type: 'Seller', title: s.name, subtitle: s.email, url: '/sellers', data: s })),
+        ...users.map(u => ({ type: 'User', title: u.name, subtitle: u.email, url: '/users', data: u })),
       ];
     }
     else if (user.role === 'admin') {
       allItems = [
-        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/admin/quotes', data: q })),
-        ...sellers.map(s => ({ type: 'Seller', title: s.name, subtitle: s.email, url: '/admin/sellers', data: s })),
+        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/quotes', data: q })),
+        ...sellers.map(s => ({ type: 'Seller', title: s.name, subtitle: s.email, url: '/sellers', data: s })),
       ];
     }
     else if (user.role === 'seller') {
       allItems = [
-        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/admin/quotes', data: q })),
+        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/quotes', data: q })),
       ];
     }
     else if (user.role === 'dealer') {
       allItems = [
-        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/dealer/quotes', data: q })),
-        ...dealerships.map(d => ({ type: 'Dealership', title: d.name, subtitle: d.location, url: '/dealer/dealerships', data: d })),
+        ...quotes.map(q => ({ type: 'Quote', title: `${q.id} - ${q.vehicle}`, subtitle: q.customerName, date: q.date, url: '/quotes', data: q })),
+        ...dealerships.map(d => ({ type: 'Dealership', title: d.name, subtitle: d.location, url: '/dealerships', data: d })),
       ];
     }
 

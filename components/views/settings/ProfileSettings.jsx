@@ -4,7 +4,7 @@ import { User, Camera, Save, Loader2, Phone } from "lucide-react";
 import Image from "next/image";
 import Swal from "sweetalert2";
 
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../../context/AuthContext";
 
 export default function ProfileSettings({ user }) {
     const { updateProfile } = useAuth();

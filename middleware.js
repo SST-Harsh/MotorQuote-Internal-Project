@@ -4,7 +4,6 @@ export function middleware(request) {
   const path = request.nextUrl.pathname;
   const role = request.cookies.get("role")?.value;
 
-  // Paths that require authentication
   const protectedPaths = [
     "/dashboard",
     "/quotes",
@@ -17,6 +16,11 @@ export function middleware(request) {
     "/settings",
     "/inventory"
   ];
+
+  // Redirect legacy paths
+  if (path.startsWith("/admin") || path.startsWith("/dealer") || path.startsWith("/super-admin")) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
 
   const isProtected = protectedPaths.some(p => path.startsWith(p));
 

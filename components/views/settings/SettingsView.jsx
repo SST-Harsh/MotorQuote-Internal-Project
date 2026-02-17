@@ -1,10 +1,10 @@
 "use client";
 import React from 'react';
-import AppearanceSettings from "../../settings/AppearanceSettings";
-import ProfileSettings from "../../settings/ProfileSettings";
-import SecuritySettings from "../../settings/SecuritySettings";
-import ConfigurationSettings from "../../settings/ConfigurationSettings";
-import GlobalSystemSettings from "../../settings/GlobalSystemSettings";
+import AppearanceSettings from "./AppearanceSettings";
+import ProfileSettings from "./ProfileSettings";
+import SecuritySettings from "./SecuritySettings";
+import ConfigurationSettings from "./ConfigurationSettings";
+import GlobalSystemSettings from "./GlobalSystemSettings";
 import { useAuth } from "../../../context/AuthContext";
 
 export default function SettingsView() {

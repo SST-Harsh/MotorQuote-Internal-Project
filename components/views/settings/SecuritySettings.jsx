@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Shield, Lock, Eye, EyeOff } from "lucide-react";
 import Swal from "sweetalert2";
 import * as yup from "yup";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../../context/AuthContext";
 
 export default function SecuritySettings() {
     const { user, updateProfile } = useAuth();

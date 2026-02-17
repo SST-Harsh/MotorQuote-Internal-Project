@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import * as yup from 'yup';
 import { X, Save, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import CustomDateTimePicker from '../../common/CustomDateTimePicker';
+import CustomDateTimePicker from './CustomDateTimePicker';
 
 export default function GenericFormModal({
     isOpen,

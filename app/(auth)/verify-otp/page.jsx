@@ -69,15 +69,7 @@ export default function VerifyOtpPage() {
       const user = JSON.parse(localStorage.getItem("user"));
 
       setTimeout(() => {
-        if (user?.role === "admin") {
-          window.location.href = "/admin/dashboard";
-        } else if (user?.role === "dealer") {
-          window.location.href = "/dealer/dashboard";
-        } else if (user?.role === "super_admin") {
-          window.location.href = "/super-admin/dashboard";
-        } else {
-          window.location.href = "/dashboard";
-        }
+        window.location.href = "/dashboard";
       }, 1500);
     } else {
       Swal.fire({

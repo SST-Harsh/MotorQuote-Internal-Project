@@ -3,7 +3,7 @@ import React from 'react';
 import { LogOut, X, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { usePathname } from 'next/navigation';
-import { useAuth } from "../../../context/AuthContext"
+import { useAuth } from "../../context/AuthContext"
 import Link from "next/link";
 
 const SidebarNavItem = ({ item, isActive, onItemClick, pathname }) => {

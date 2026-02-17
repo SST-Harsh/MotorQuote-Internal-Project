@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import { Palette, Sun, Moon, Monitor, Droplets } from "lucide-react";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../../context/ThemeContext";
 
 const themes = [
     { id: 'light', label: 'Light', icon: Sun, color: 'bg-white border-gray-200' },
