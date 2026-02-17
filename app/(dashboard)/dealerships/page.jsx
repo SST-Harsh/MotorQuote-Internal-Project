@@ -1,7 +1,7 @@
-"use client";
+'use client';
 import React from 'react';
-import DealershipsView from "../../../components/views/dealerships/DealershipsView";
+import DealershipsView from '../../../components/views/dealerships/DealershipsView';
 
 export default function DealershipsPage() {
-    return <DealershipsView />;
+  return <DealershipsView />;
 }

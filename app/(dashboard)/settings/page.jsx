@@ -1,7 +1,7 @@
-"use client";
+'use client';
 import React from 'react';
-import SettingsView from "../../../components/views/settings/SettingsView";
+import SettingsView from '../../../components/views/settings/SettingsView';
 
 export default function SettingsPage() {
-    return <SettingsView />;
+  return <SettingsView />;
 }

@@ -12,13 +12,22 @@ const ActivityFeed = ({ items = [] }) => (
       {items.map((item) => (
         <div key={item.id} className="flex items-start gap-3">
           <div className="relative h-10 w-10">
-            <Image src={item.avatar} alt={item.name} fill className="rounded-full object-cover" sizes="40px" />
+            <Image
+              src={item.avatar}
+              alt={item.name}
+              fill
+              className="rounded-full object-cover"
+              sizes="40px"
+            />
           </div>
           <div className="flex-1">
             <p className="text-sm font-semibold text-[rgb(var(--color-text))]">
               {item.name}{' '}
               <span className="font-normal text-[rgb(var(--color-text-muted))]">
-                {item.action} <span className="text-[rgb(var(--color-primary))] font-semibold">{item.subject}</span>
+                {item.action}{' '}
+                <span className="text-[rgb(var(--color-primary))] font-semibold">
+                  {item.subject}
+                </span>
               </span>
             </p>
             <p className="text-xs text-[rgb(var(--color-text-muted))]">{item.time}</p>
@@ -30,4 +39,3 @@ const ActivityFeed = ({ items = [] }) => (
 );
 
 export default ActivityFeed;
-

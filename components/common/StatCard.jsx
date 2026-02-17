@@ -13,7 +13,9 @@ const StatCard = ({ title, value, helperText, trend, icon, accent }) => (
     <div className="flex items-center justify-between text-sm">
       <span className="text-[rgb(var(--color-text))]">{helperText}</span>
       {trend && (
-        <span className={`font-semibold ${trend.positive ? 'text-[rgb(var(--color-success))]' : 'text-[rgb(var(--color-error))]'}`}>
+        <span
+          className={`font-semibold ${trend.positive ? 'text-[rgb(var(--color-success))]' : 'text-[rgb(var(--color-error))]'}`}
+        >
           {trend.positive ? '▲' : '▼'} {trend.label}
         </span>
       )}
@@ -22,4 +24,3 @@ const StatCard = ({ title, value, helperText, trend, icon, accent }) => (
 );
 
 export default StatCard;
-

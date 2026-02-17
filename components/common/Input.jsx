@@ -27,18 +27,16 @@ const Input = ({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
-        className={`w-full px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:border-transparent transition-all text-sm ${error ? 'border-[rgb(var(--color-error))] bg-[rgb(var(--color-error))/0.05]' : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]'
-          } ${Icon ? 'pl-12' : ''} text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text-muted))]`}
+        className={`w-full px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:border-transparent transition-all text-sm ${
+          error
+            ? 'border-[rgb(var(--color-error))] bg-[rgb(var(--color-error))/0.05]'
+            : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]'
+        } ${Icon ? 'pl-12' : ''} text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text-muted))]`}
         {...props}
       />
     </div>
-    {error && (
-      <p className="text-xs mt-1 text-[rgb(var(--color-error))]">
-        {error}
-      </p>
-    )}
+    {error && <p className="text-xs mt-1 text-[rgb(var(--color-error))]">{error}</p>}
   </div>
 );
 
 export default Input;
-

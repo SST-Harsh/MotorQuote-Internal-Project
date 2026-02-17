@@ -1,7 +1,7 @@
-"use client";
+'use client';
 import React from 'react';
-import ApprovalsView from "../../../components/views/admin/ApprovalsView";
+import ApprovalsView from '../../../components/views/admin/ApprovalsView';
 
 export default function ApprovalsPage() {
-    return <ApprovalsView />;
+  return <ApprovalsView />;
 }

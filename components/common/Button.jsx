@@ -15,13 +15,13 @@ const Button = ({
     lg: 'px-8 py-4 text-base',
   };
 
-  const baseStyles =
-    `${sizeStyles[size]} rounded-md font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed`;
+  const baseStyles = `${sizeStyles[size]} rounded-md font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed`;
 
   const variantStyles = {
     primary: 'bg-primary text-white hover:bg-primary-dark focus:ring-primary',
     secondary: 'bg-surface text-text hover:bg-background focus:ring-border border border-border',
-    outline: 'border-2 border-primary bg-transparent text-primary hover:bg-primary/5 focus:ring-primary',
+    outline:
+      'border-2 border-primary bg-transparent text-primary hover:bg-primary/5 focus:ring-primary',
     danger: 'bg-error text-white hover:bg-error/90 focus:ring-error',
   };
 
@@ -45,4 +45,3 @@ const Button = ({
 };
 
 export default Button;
-

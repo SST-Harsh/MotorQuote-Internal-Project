@@ -5,7 +5,8 @@ import './globals.css';
 
 export const metadata = {
   title: 'MotorQuote – Modern Vehicle Quotation Platform',
-  description: 'MotorQuote streamlines the entire vehicle quotation workflow, giving dealers, sellers, and admins a unified digital experience to create, manage, and deliver quotes faster with full transparency.',
+  description:
+    'MotorQuote streamlines the entire vehicle quotation workflow, giving dealers, sellers, and admins a unified digital experience to create, manage, and deliver quotes faster with full transparency.',
   icons: {
     icon: '/assets/motorQuote.png',
   },
@@ -18,12 +19,9 @@ export const viewport = {
 };
 
 export default async function RootLayout({ children }) {
-
-
   return (
     <html lang="en">
-      <head>
-      </head>
+      <head></head>
       <body>
         <script
           dangerouslySetInnerHTML={{
@@ -39,9 +37,7 @@ export default async function RootLayout({ children }) {
         />
         <ThemeProvider>
           <AuthProvider>
-            <NotificationProvider>
-              {children}
-            </NotificationProvider>
+            <NotificationProvider>{children}</NotificationProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

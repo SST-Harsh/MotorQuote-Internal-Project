@@ -11,11 +11,8 @@ const Checkbox = ({ label, checked, onChange, error, className = '', ...props })
       />
       <span className="text-sm select-none text-text">{label}</span>
     </label>
-    {error && (
-      <p className="text-xs mt-1 text-error">{error}</p>
-    )}
+    {error && <p className="text-xs mt-1 text-error">{error}</p>}
   </div>
 );
 
 export default Checkbox;
-

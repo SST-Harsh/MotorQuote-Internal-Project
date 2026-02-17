@@ -34,11 +34,7 @@ const DashboardLayout = ({ sidebarSections, user, children }) => {
       )}
 
       <div className="flex-1 flex flex-col lg:pl-[280px]">
-        <TopBar
-          user={user}
-          title={title}
-          onMenuClick={() => setIsSidebarOpen(true)}
-        />
+        <TopBar user={user} title={title} onMenuClick={() => setIsSidebarOpen(true)} />
         <main className="flex-1 bg-background px-4 py-8 sm:px-10">{children}</main>
       </div>
     </div>
@@ -46,4 +42,3 @@ const DashboardLayout = ({ sidebarSections, user, children }) => {
 };
 
 export default DashboardLayout;
-
