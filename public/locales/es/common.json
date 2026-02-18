@@ -1,0 +1,125 @@
+{
+  "save": "Guardar",
+  "cancel": "Cancelar",
+  "edit": "Editar",
+  "delete": "Eliminar",
+  "actions": "Acciones",
+  "status": "Estado",
+  "loading": "Cargando...",
+  "noData": "No hay datos disponibles",
+  "search": "Buscar...",
+  "filter": "Filtrar",
+  "you": "Tú",
+  "error": "Error",
+  "notifications": {
+    "title": "Notificaciones",
+    "clearAll": "Limpiar todo",
+    "markAsRead": "Marcar como leído"
+  },
+  "roles": {
+    "super_admin": "Super Administrador",
+    "admin": "Administrador",
+    "dealer_manager": "Gerente de Concesionario",
+    "admin_work": "Administrador",
+    "dealer_work": "Trabajo de Distribuidor",
+    "dealer": "Distribuidor",
+    "dealer_staff": "Personal del Distribuidor",
+    "support_staff": "Personal de Soporte",
+    "user": "Usuario"
+  },
+  "statuses": {
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "suspended": "Suspendido"
+  },
+  "theme": {
+    "light": "Modo Claro",
+    "dark": "Modo Oscuro",
+    "slate": "Modo Pizarra",
+    "luxury": "Modo Lujo",
+    "preference": "Preferencia de Tema"
+  },
+  "user": "Usuario",
+  "searchPlaceholder": "Buscar cualquier cosa...",
+  "sellMadeSimple": "VENTA. HECHA SIMPLE.",
+  "logout": "Cerrar sesión",
+  "select": "Seleccionar",
+  "selectLanguage": "SELECCIONAR IDIOMA",
+  "table": {
+    "searchPlaceholder": "Buscar...",
+    "noResults": "No se encontraron resultados para su búsqueda.",
+    "tryAdjusting": "Intente ajustar sus filtros o término de búsqueda.",
+    "resetFilters": "Restablecer filtros",
+    "filters": "Filtros",
+    "clearFilters": "Borrar filtros",
+    "showing": "Mostrando",
+    "of": "de"
+  },
+  "form": {
+    "add": "Agregar nuevo",
+    "save": "Guardar",
+    "saving": "Guardando...",
+    "saveChanges": "Guardar cambios",
+    "cancel": "Cancelar",
+    "enterDetails": "Por favor ingrese los detalles a continuación.",
+    "editTitle": "Editar detalles",
+    "createTitle": "Crear nuevo",
+    "editSubtitle": "Actualice la información a continuación.",
+    "createSubtitle": "Complete la información requerida."
+  },
+  "time": {
+    "m": "m",
+    "h": "h",
+    "d": "d"
+  },
+  "alerts": {
+    "systemAlert": "ALERTA DEL SISTEMA",
+    "securityBreach": "BRECHA DE SEGURIDAD DETECTADA",
+    "backendAlert": "ALERTA DEL SISTEMA BACKEND",
+    "criticalAttention": "Se requiere atención crítica del sistema.",
+    "viewDetails": "VER DETALLES"
+  },
+  "impersonation": {
+    "mode": "MODO DE SUPLANTACIÓN",
+    "viewingAs": "Viéndolo como:",
+    "originalAdmin": "Administrador original:",
+    "exit": "Salir de la suplantación"
+  },
+  "navigation": {
+    "management": "Gestión",
+    "dashboard": "Panel de Control",
+    "globalUsers": "Usuarios Globales",
+    "allDealerships": "Todos los Concesionarios",
+    "quoteManagement": "Gestión de Cotizaciones",
+    "reports": "Informes y Análisis",
+    "system": "Sistema",
+    "sessionManagement": "Gestión de Sesiones",
+    "auditLogs": "Registros de Auditoría",
+    "rolePermissions": "Roles y Permisos",
+    "impersonationLogs": "Historial de Suplantación",
+    "translations": "Explorador de Traducciones",
+    "support": "Soporte al Distribuidor",
+    "globalSettings": "Ajustes Globales",
+    "systemManagement": "Gestión del Sistema",
+    "myDealerships": "Mis Concesionarios",
+    "quotes": "Cotizaciones",
+    "dealers": "Distribuidores",
+    "analytics": "Analítica",
+    "sessions": "Sesiones",
+    "notifications": "Notificaciones",
+    "settings": "Ajustes",
+    "dealerPortal": "Portal del Distribuidor",
+    "staffManagement": "Gestión de Personal",
+    "mySettings": "Mis Ajustes",
+    "notificationCenter": {
+      "title": "Centro de Notificaciones",
+      "broadcasting": "Difusión",
+      "email": "Campañas de Correo"
+    },
+    "contentManagement": {
+      "title": "Gestión de Contenido",
+      "webContent": "Contenido Web (CMS)",
+      "pricingConfig": "Precios y Config."
+    }
+  }
+}

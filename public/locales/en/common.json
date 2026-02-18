@@ -1,0 +1,127 @@
+{
+  "save": "Save",
+  "cancel": "Cancel",
+  "edit": "Edit",
+  "delete": "Delete",
+  "actions": "Actions",
+  "status": "Status",
+  "loading": "Loading...",
+  "noData": "No data available",
+  "search": "Search...",
+  "filter": "Filter",
+  "you": "You",
+  "error": "Error",
+  "notifications": {
+    "title": "Notifications",
+    "clearAll": "Clear All",
+    "markAsRead": "Mark as Read"
+  },
+  "roles": {
+    "super_admin": "Super Admin",
+    "admin": "Admin",
+    "dealer_manager": "Dealer Manager",
+    "admin_work": "Admin",
+    "dealer_work": "Dealer Work",
+    "dealer": "Dealer",
+    "dealer_staff": "Dealer Staff",
+    "support_staff": "Support Staff",
+    "user": "User"
+  },
+  "statuses": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "suspended": "Suspended"
+  },
+  "theme": {
+    "light": "Light Mode",
+    "dark": "Dark Mode",
+    "slate": "Slate Mode",
+    "luxury": "Luxury Mode",
+    "preference": "Theme Preference"
+  },
+  "user": "User",
+  "searchPlaceholder": "Search anything...",
+  "sellMadeSimple": "SELL. MADE SIMPLE.",
+  "logout": "Logout",
+  "select": "Select",
+  "selectLanguage": "SELECT LANGUAGE",
+  "table": {
+    "searchPlaceholder": "Search...",
+    "noResults": "No results found for your search.",
+    "tryAdjusting": "Try adjusting your filters or search term.",
+    "resetFilters": "Reset Filters",
+    "filters": "Filters",
+    "clearFilters": "Clear Filters",
+    "showing": "Showing",
+    "of": "of"
+  },
+  "form": {
+    "add": "Add New",
+    "save": "Save",
+    "saving": "Saving...",
+    "saveChanges": "Save Changes",
+    "cancel": "Cancel",
+    "enterDetails": "Please enter the details below.",
+    "editTitle": "Edit Details",
+    "createTitle": "Create New",
+    "editSubtitle": "Update the information below.",
+    "createSubtitle": "Fill in the required information.",
+    "select": "Select"
+  },
+  "time": {
+    "m": "m",
+    "h": "h",
+    "d": "d"
+  },
+  "alerts": {
+    "systemAlert": "SYSTEM ALERT",
+    "securityBreach": "SECURITY BREACH DETECTED",
+    "backendAlert": "BACKEND SYSTEM ALERT",
+    "criticalAttention": "Critical system attention required.",
+    "viewDetails": "VIEW DETAILS"
+  },
+  "impersonation": {
+    "mode": "IMPERSONATION MODE",
+    "viewingAs": "Viewing as:",
+    "originalAdmin": "Original Admin:",
+    "exit": "Exit Impersonation"
+  },
+  "navigation": {
+    "management": "Management",
+    "dashboard": "Dashboard",
+    "globalUsers": "Global Users",
+    "allDealerships": "All Dealerships",
+    "quoteManagement": "Quote Management",
+    "reports": "Reports & Analytics",
+    "system": "System",
+    "sessionManagement": "Session Management",
+    "auditLogs": "Audit Logs",
+    "rolePermissions": "Roles & Permissions",
+    "tags": "Tags",
+    "impersonationLogs": "Impersonation History",
+    "translations": "Translation Explorer",
+    "support": "Support Center",
+    "globalSettings": "Global Settings",
+    "systemManagement": "System Management",
+    "myDealerships": "My Dealerships",
+    "quotes": "Quotes",
+    "dealers": "Dealers",
+    "analytics": "Analytics",
+    "sessions": "Sessions",
+    "notifications": "Notifications",
+    "settings": "Settings",
+    "dealerPortal": "Dealer Portal",
+    "staffManagement": "Staff Management",
+    "mySettings": "My Settings",
+    "notificationCenter": {
+      "title": "Notification Center",
+      "broadcasting": "Broadcasting",
+      "email": "Email Campaigns"
+    },
+    "contentManagement": {
+      "title": "Content Management",
+      "webContent": "Web Content (CMS)",
+      "pricingConfig": "Configuration"
+    }
+  }
+}

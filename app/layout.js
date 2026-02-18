@@ -1,29 +1,54 @@
+import { Public_Sans, Racing_Sans_One } from 'next/font/google';
 import { AuthProvider } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { NotificationProvider } from '../context/NotificationContext';
+import { LanguageProvider } from '../context/LanguageContext';
+import { PreferenceProvider } from '../context/PreferenceContext';
+import { QueryProvider } from '../lib/react-query/QueryProvider';
+import ErrorBoundary from '../components/common/ErrorBoundary';
+import SocialProviders from '../components/common/SocialProviders';
 import './globals.css';
+import Script from 'next/script';
 
-export const metadata = {
-  title: 'MotorQuote – Modern Vehicle Quotation Platform',
-  description:
-    'MotorQuote streamlines the entire vehicle quotation workflow, giving dealers, sellers, and admins a unified digital experience to create, manage, and deliver quotes faster with full transparency.',
-  icons: {
-    icon: '/assets/motorQuote.png',
-  },
-};
+const publicSans = Public_Sans({
+  subsets: ['latin'],
+  variable: '--font-public-sans',
+  display: 'swap',
+});
 
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-};
+const racingSansOne = Racing_Sans_One({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-racing-sans',
+  display: 'swap',
+});
 
 export default async function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head></head>
-      <body>
-        <script
+      <body className={`${publicSans.variable} ${racingSansOne.variable}`}>
+        <ErrorBoundary>
+          <QueryProvider>
+            <ThemeProvider>
+              <AuthProvider>
+                <PreferenceProvider>
+                  <SocialProviders>
+                    <NotificationProvider>
+                      <LanguageProvider>
+                        {children}
+                        <div id="modal-root"></div>
+                      </LanguageProvider>
+                    </NotificationProvider>
+                  </SocialProviders>
+                </PreferenceProvider>
+              </AuthProvider>
+            </ThemeProvider>
+          </QueryProvider>
+        </ErrorBoundary>
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -35,11 +60,6 @@ export default async function RootLayout({ children }) {
             `,
           }}
         />
-        <ThemeProvider>
-          <AuthProvider>
-            <NotificationProvider>{children}</NotificationProvider>
-          </AuthProvider>
-        </ThemeProvider>
       </body>
     </html>
   );

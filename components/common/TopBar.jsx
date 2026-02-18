@@ -1,146 +1,123 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Input from './Input';
-import Image from 'next/image';
-import { Search, Bell, ChevronDown, Menu } from 'lucide-react';
+import { Search, Menu, Loader2, X } from 'lucide-react';
 import ThemeSwitcher from './ThemeSwitcher';
+import NotificationCenter from './NotificationCenter';
+import LanguageSwitcher from './LanguageSwitcher';
+import api from '@/utils/api';
+import userService from '@/services/userService';
 
 import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationContext';
+
+import { useTranslation } from '@/context/LanguageContext';
+import { formatDate } from '@/utils/i18n';
 
 const TopBar = ({ title, onMenuClick }) => {
+  const { t } = useTranslation('common');
   const { user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const [isNavigating, setIsNavigating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [allData, setAllData] = useState([]);
 
-  const { unreadCount, userNotifications, markAsRead, markAllAsRead, clearAllNotifications } =
-    useNotifications();
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    setIsNavigating(false);
+  }, [pathname]);
 
-    const quotes = JSON.parse(localStorage.getItem('quotes_data') || '[]');
-    const dealerships = JSON.parse(localStorage.getItem('dealerships') || '[]');
-    const managers = JSON.parse(localStorage.getItem('managers_data') || '[]');
-    const sellers = JSON.parse(localStorage.getItem('sellers_data') || '[]');
-    const users = JSON.parse(localStorage.getItem('mock_users_db') || '[]');
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchTerm.trim().length === 0) {
+        setSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
 
-    let allItems = [];
+      if (!user) return;
 
-    if (user.role === 'super_admin') {
-      allItems = [
-        ...quotes.map((q) => ({
-          type: 'Quote',
-          title: `${q.id} - ${q.vehicle}`,
-          subtitle: q.customerName,
-          date: q.date,
-          url: '/quotes',
-          data: q,
-        })),
-        ...dealerships.map((d) => ({
-          type: 'Dealership',
-          title: d.name,
-          subtitle: d.location,
-          url: '/dealerships',
-          data: d,
-        })),
-        ...managers.map((m) => ({
-          type: 'Manager',
-          title: m.name,
-          subtitle: m.email,
-          url: '/users',
-          data: m,
-        })),
-        ...sellers.map((s) => ({
-          type: 'Seller',
-          title: s.name,
-          subtitle: s.email,
-          url: '/sellers',
-          data: s,
-        })),
-        ...users.map((u) => ({
-          type: 'User',
-          title: u.name,
-          subtitle: u.email,
-          url: '/users',
-          data: u,
-        })),
-      ];
-    } else if (user.role === 'admin') {
-      allItems = [
-        ...quotes.map((q) => ({
-          type: 'Quote',
-          title: `${q.id} - ${q.vehicle}`,
-          subtitle: q.customerName,
-          date: q.date,
-          url: '/quotes',
-          data: q,
-        })),
-        ...sellers.map((s) => ({
-          type: 'Seller',
-          title: s.name,
-          subtitle: s.email,
-          url: '/sellers',
-          data: s,
-        })),
-      ];
-    } else if (user.role === 'seller') {
-      allItems = [
-        ...quotes.map((q) => ({
-          type: 'Quote',
-          title: `${q.id} - ${q.vehicle}`,
-          subtitle: q.customerName,
-          date: q.date,
-          url: '/quotes',
-          data: q,
-        })),
-      ];
-    } else if (user.role === 'dealer') {
-      allItems = [
-        ...quotes.map((q) => ({
-          type: 'Quote',
-          title: `${q.id} - ${q.vehicle}`,
-          subtitle: q.customerName,
-          date: q.date,
-          url: '/quotes',
-          data: q,
-        })),
-        ...dealerships.map((d) => ({
-          type: 'Dealership',
-          title: d.name,
-          subtitle: d.location,
-          url: '/dealerships',
-          data: d,
-        })),
-      ];
-    }
+      try {
+        let results = [];
 
-    setAllData(allItems);
-  }, [user]);
+        // 1. Search Quotes
+        const quotesData = await import('@/services/quoteService').then((m) =>
+          m.default.getQuotes({ search: searchTerm, limit: 5 })
+        );
+        const quotes = Array.isArray(quotesData)
+          ? quotesData
+          : quotesData.quotes || quotesData.data || [];
+
+        results.push(
+          ...quotes.map((q) => ({
+            type: 'Quote',
+            title: `#${q.id} - ${q.vehicle_info?.year || ''} ${q.vehicle_info?.make || ''} ${q.vehicle_info?.model || ''}`,
+            subtitle: q.customer_name || q.clientName,
+            date: formatDate(q.created_at || q.date),
+            url: '/quotes',
+            data: q,
+          }))
+        );
+
+        if (user.role === 'super_admin') {
+          try {
+            const dealersData = await import('@/utils/api').then((m) =>
+              m.default.get('/dealerships', { params: { search: searchTerm, limit: 3 } })
+            );
+            const dealers = dealersData.data?.data || dealersData.data || [];
+
+            results.push(
+              ...dealers.map((d) => ({
+                type: 'Dealership',
+                title: d.name,
+                subtitle: d.location || d.email,
+                url: '/dealerships',
+                data: d,
+              }))
+            );
+          } catch (e) {
+            console.error('Dealer search error', e);
+          }
+        }
+
+        if (['super_admin', 'admin'].includes(user.role)) {
+          try {
+            const usersData = await import('@/utils/api').then((m) =>
+              m.default.get('/users', { params: { search: searchTerm, limit: 3 } })
+            );
+            const users = usersData.data?.data || usersData.data || [];
+
+            results.push(
+              ...users.map((u) => ({
+                type: 'User',
+                title: u.name,
+                subtitle: u.email,
+                url: '/users',
+                data: u,
+              }))
+            );
+          } catch (e) {
+            console.error('User search error', e);
+          }
+        }
+
+        setSuggestions(results.slice(0, 8)); // Limit dropdown
+        setShowSuggestions(true);
+      } catch (error) {
+        console.error('Global search failed', error);
+        setSuggestions([]);
+      }
+    }, 500); // 500ms Debounce
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, user]);
 
   const handleSearch = (term) => {
     setSearchTerm(term);
-    if (term.trim().length > 0) {
-      const lowerTerm = term.toLowerCase();
-      const filtered = allData
-        .filter(
-          (item) =>
-            item.title.toLowerCase().includes(lowerTerm) ||
-            item.subtitle.toLowerCase().includes(lowerTerm) ||
-            item.type.toLowerCase().includes(lowerTerm)
-        )
-        .slice(0, 5);
-      setSuggestions(filtered);
-      setShowSuggestions(true);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    }
+    // Logic moved to useEffect for debouncing
   };
 
   const handleSuggestionClick = (item) => {
@@ -149,31 +126,12 @@ const TopBar = ({ title, onMenuClick }) => {
     setShowSuggestions(false);
   };
 
-  const handleClearNotifications = () => {
-    clearAllNotifications();
-    setShowNotifications(false);
-  };
-
-  const notificationRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-        setShowNotifications(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   return (
     <header className="sticky top-0 z-30 bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] px-6 py-4 transition-all duration-300">
       <div className="flex items-center justify-between gap-4">
-        {/* Left Side: Hamburger + Title */}
-        <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
+        <div
+          className={`flex items-center gap-3 md:gap-4 flex-shrink-0 ${showMobileSearch ? 'hidden md:flex' : 'flex'}`}
+        >
           <button
             onClick={onMenuClick}
             className="lg:hidden p-2 -ml-2 text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-lg transition-colors flex-shrink-0"
@@ -186,11 +144,57 @@ const TopBar = ({ title, onMenuClick }) => {
           </h2>
         </div>
 
+        {/* Mobile Search Overlay/Toggle Area */}
+        <div className={`flex-1 px-2 md:hidden ${showMobileSearch ? 'block' : 'hidden'}`}>
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder={t('searchPlaceholder')}
+              autoFocus
+              icon={Search}
+              className="mb-0 w-full h-10 text-sm"
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              onBlur={() => {
+                setTimeout(() => {
+                  if (!searchTerm) setShowMobileSearch(false);
+                  setShowSuggestions(false);
+                }, 200);
+              }}
+            />
+            <button
+              onClick={() => {
+                setShowMobileSearch(false);
+                setSearchTerm('');
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {/* Mobile Suggestions */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute left-4 right-4 top-full mt-2 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
+              {suggestions.map((item, idx) => (
+                <div
+                  key={`mob-${item.type}-${idx}`}
+                  onClick={() => handleSuggestionClick(item)}
+                  className="px-4 py-3 hover:bg-[rgb(var(--color-background))] cursor-pointer border-b border-[rgb(var(--color-border))] last:border-0"
+                >
+                  <p className="text-sm font-medium text-[rgb(var(--color-text))]">{item.title}</p>
+                  <p className="text-xs text-[rgb(var(--color-text-muted))]">{item.subtitle}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex-1 max-w-2xl px-4 hidden md:block relative">
           <Input
             type="text"
-            placeholder="Search quotes, dealers..."
-            icon={Search}
+            placeholder={t('searchPlaceholder')}
+            icon={isNavigating ? Loader2 : Search}
+            iconClassName={isNavigating ? 'animate-spin text-blue-500' : ''}
             className="mb-0 w-full"
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
@@ -231,72 +235,16 @@ const TopBar = ({ title, onMenuClick }) => {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 justify-end">
-          <div className="relative" ref={notificationRef}>
+          {!showMobileSearch && (
             <button
-              type="button"
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative h-9 w-9 md:h-10 md:w-10 flex items-center justify-center rounded-lg text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] hover:text-[rgb(var(--color-primary))] transition-colors"
+              onClick={() => setShowMobileSearch(true)}
+              className="md:hidden p-2 text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] rounded-lg"
             >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-[rgb(var(--color-error))] border-2 border-[rgb(var(--color-surface))]" />
-              )}
+              <Search size={20} />
             </button>
-
-            {showNotifications && (
-              <div className="fixed inset-x-4 top-[70px] sm:absolute sm:top-12 sm:right-0 sm:inset-auto sm:w-80 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl z-50 overflow-hidden">
-                <div className="p-3 border-b border-[rgb(var(--color-border))] flex justify-between items-center bg-[rgb(var(--color-background))]">
-                  <h3 className="font-semibold text-sm text-[rgb(var(--color-text))]">
-                    Notifications
-                  </h3>
-                  <div className="flex gap-2">
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={markAllAsRead}
-                        className="text-xs text-[rgb(var(--color-primary))] hover:underline"
-                      >
-                        Mark all read
-                      </button>
-                    )}
-                    <button
-                      onClick={handleClearNotifications}
-                      className="text-xs text-[rgb(var(--color-primary))] hover:underline"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {userNotifications.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-[rgb(var(--color-text-muted))]">
-                      No notifications
-                    </div>
-                  ) : (
-                    userNotifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`p-3 border-b border-[rgb(var(--color-border))] last:border-0 hover:bg-[rgb(var(--color-background))] transition-colors cursor-pointer ${!notif.readBy.includes(user?.id) ? 'bg-[rgb(var(--color-primary))/0.05]' : ''}`}
-                        onClick={() => markAsRead(notif.id)}
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-xs font-bold text-[rgb(var(--color-text))]">
-                            {notif.title}
-                          </span>
-                          <span className="text-[10px] text-[rgb(var(--color-text-muted))]">
-                            {new Date(notif.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-xs text-[rgb(var(--color-text-muted))] line-clamp-2">
-                          {notif.message}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
+          )}
+          <LanguageSwitcher />
+          <NotificationCenter />
           <ThemeSwitcher />
         </div>
       </div>

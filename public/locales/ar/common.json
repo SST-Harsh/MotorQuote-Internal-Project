@@ -1,0 +1,125 @@
+{
+  "save": "حفظ",
+  "cancel": "إلغاء",
+  "edit": "تعديل",
+  "delete": "حذف",
+  "actions": "إجراءات",
+  "status": "الحالة",
+  "loading": "جاري التحميل...",
+  "noData": "لا توجد بيانات متاحة",
+  "search": "بحث...",
+  "filter": "تصفية",
+  "you": "أنت",
+  "error": "خطأ",
+  "notifications": {
+    "title": "الإشعارات",
+    "clearAll": "مسح الكل",
+    "markAsRead": "تحديد كمقروء"
+  },
+  "roles": {
+    "super_admin": "المسؤول الأعلى",
+    "admin": "مسؤول",
+    "dealer_manager": "مدير المعرض",
+    "admin_work": "مسؤول",
+    "dealer_work": "عمل الوكيل",
+    "dealer": "الوكيل",
+    "dealer_staff": "موظفي الوكيل",
+    "support_staff": "موظفي الدعم",
+    "user": "مستخدم"
+  },
+  "statuses": {
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "suspended": "معلق"
+  },
+  "theme": {
+    "light": "الوضع الفاتح",
+    "dark": "الوضع الداكن",
+    "slate": "الوضع الرمادي",
+    "luxury": "الوضع الفاخر",
+    "preference": "تفضيلات المظهر"
+  },
+  "user": "مستخدم",
+  "searchPlaceholder": "ابحث عن أي شيء...",
+  "sellMadeSimple": "البيع. أصبح بسيطاً.",
+  "logout": "تسجيل الخروج",
+  "select": "اختر",
+  "selectLanguage": "اختر اللغة",
+  "table": {
+    "searchPlaceholder": "بحث...",
+    "noResults": "لم يتم العثور على نتائج لبحثك.",
+    "tryAdjusting": "حاول ضبط الفلاتر أو مصطلح البحث.",
+    "resetFilters": "إعادة تعيين المرشحات",
+    "filters": "مرشحات",
+    "clearFilters": "مسح الفلاتر",
+    "showing": "عرض",
+    "of": "من"
+  },
+  "form": {
+    "add": "إضافة جديد",
+    "save": "حفظ",
+    "saving": "جاري الحفظ...",
+    "saveChanges": "حفظ التغييرات",
+    "cancel": "إلغاء",
+    "enterDetails": "يرجى إدخال التفاصيل أدناه.",
+    "editTitle": "تعديل التفاصيل",
+    "createTitle": "إنشاء جديد",
+    "editSubtitle": "تحديث المعلومات أدناه.",
+    "createSubtitle": "ملء المعلومات المطلوبة."
+  },
+  "time": {
+    "m": "د",
+    "h": "س",
+    "d": "ي"
+  },
+  "alerts": {
+    "systemAlert": "تنبيه النظام",
+    "securityBreach": "تم اكتشاف خرق أمني",
+    "backendAlert": "تنبيه نظام الخلفية",
+    "criticalAttention": "مطلوب اهتمام بالنظام الحرج.",
+    "viewDetails": "عرض التفاصيل"
+  },
+  "impersonation": {
+    "mode": "وضع انتحال الشخصية",
+    "viewingAs": "العرض باسم:",
+    "originalAdmin": "المسؤول الأصلي:",
+    "exit": "خروج من انتحال الشخصية"
+  },
+  "navigation": {
+    "management": "الإدارة",
+    "dashboard": "لوحة القيادة",
+    "globalUsers": "المستخدمون العالميون",
+    "allDealerships": "كل المعارض",
+    "quoteManagement": "إدارة العروض",
+    "reports": "التقارير والتحليلات",
+    "system": "النظام",
+    "sessionManagement": "إدارة الجلسات",
+    "auditLogs": "سجلات التدقيق",
+    "rolePermissions": "الأدوار والصلاحيات",
+    "impersonationLogs": "سجل التقمص",
+    "translations": "مستكشف الترجمات",
+    "support": "دعم الوكيل",
+    "globalSettings": "الإعدادات العامة",
+    "systemManagement": "إدارة النظام",
+    "myDealerships": "معارضي",
+    "quotes": "العروض",
+    "dealers": "الوكلاء",
+    "analytics": "التحليلات",
+    "sessions": "الجلسات",
+    "notifications": "الإشعارات",
+    "settings": "الإعدادات",
+    "dealerPortal": "بوابة الوكيل",
+    "staffManagement": "إدارة الموظفين",
+    "mySettings": "إعداداتي",
+    "notificationCenter": {
+      "title": "مركز الإشعارات",
+      "broadcasting": "البث",
+      "email": "حملات البريد"
+    },
+    "contentManagement": {
+      "title": "إدارة المحتوى",
+      "webContent": "محتوى الويب (CMS)",
+      "pricingConfig": "التسعير والتكوين"
+    }
+  }
+}

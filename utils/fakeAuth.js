@@ -9,7 +9,7 @@ export const usersDB = [
     email: 'super@example.com',
     password: '123456',
     role: 'super_admin',
-    requires2FA: false,
+    requires2FA: true,
   },
   {
     email: 'dealer@example.com',

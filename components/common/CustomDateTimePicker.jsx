@@ -2,23 +2,23 @@
 import React from 'react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import dayjs from 'dayjs';
 
 const darkTheme = createTheme({
   palette: {
-    mode: 'dark', // We'll force dark mode style for now or you can make it dynamic
+    mode: 'dark',
     primary: {
-      main: '#3b82f6', // Adjust to match your --color-primary
+      main: '#3b82f6',
     },
     background: {
-      paper: '#1e293b', // Adjust to match --color-surface
-      default: '#0f172a', // Adjust to match --color-background
+      paper: '#1e293b',
+      default: '#0f172a',
     },
     text: {
-      primary: '#f8fafc', // Adjust to match --color-text
-      secondary: '#94a3b8', // Adjust to match --color-text-muted
+      primary: '#f8fafc',
+      secondary: '#94a3b8',
     },
   },
   components: {
@@ -26,8 +26,9 @@ const darkTheme = createTheme({
       styleOverrides: {
         root: {
           backgroundImage: 'none',
-          border: '1px solid #334155', // --color-border
+          border: '1px solid #334155',
           borderRadius: '12px',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         },
       },
     },
@@ -37,14 +38,14 @@ const darkTheme = createTheme({
           borderRadius: '12px',
           borderColor: '#334155',
           '&:hover .MuiOutlinedInput-notchedOutline': {
-            borderColor: '#3b82f6', // Primary color on hover
+            borderColor: '#3b82f6',
           },
           '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
             borderColor: '#3b82f6',
           },
         },
         notchedOutline: {
-          borderColor: '#334155', // Default border color
+          borderColor: '#334155',
         },
         input: {
           padding: '10px 14px',
@@ -74,16 +75,16 @@ const lightTheme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          borderRadius: '0.75rem', // rounded-xl
+          borderRadius: '0.75rem',
           backgroundColor: 'rgba(255, 255, 255, 0.5)',
           '& fieldset': {
-            borderColor: '#e2e8f0', // border-slate-200
+            borderColor: '#e2e8f0',
           },
           '&:hover fieldset': {
-            borderColor: '#cbd5e1', // border-slate-300
+            borderColor: '#cbd5e1',
           },
           '&.Mui-focused fieldset': {
-            borderColor: '#2563eb', // primary
+            borderColor: '#2563eb',
           },
         },
       },
@@ -99,7 +100,6 @@ export default function CustomDateTimePicker({
   error,
   ...props
 }) {
-  // Detect theme for the internal MUI parts (Dialogs etc)
   const isDark =
     typeof document !== 'undefined' &&
     document.documentElement.getAttribute('data-theme') === 'dark';
@@ -107,8 +107,7 @@ export default function CustomDateTimePicker({
   return (
     <ThemeProvider theme={isDark ? darkTheme : lightTheme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
-        <MobileDateTimePicker
-          label={label}
+        <DateTimePicker
           value={value ? dayjs(value) : null}
           onChange={(newValue) => {
             onChange(newValue ? newValue.toISOString() : '');
@@ -117,26 +116,29 @@ export default function CustomDateTimePicker({
           slotProps={{
             textField: {
               fullWidth: true,
+              hiddenLabel: true, // Prevent label reservation
               error: !!error,
-              helperText: error,
+              helperText: error, // Error is handled by GenericFormPage too
               placeholder: placeholder,
-              // Convert label to placeholder behavior if no value
-              InputLabelProps: { shrink: true },
+              InputLabelProps: { shrink: false }, // Don't shrink label
               InputProps: {
                 sx: {
-                  height: '44px', // Match h-11
+                  height: '44px',
                   color: 'rgb(var(--color-text))',
-                  backgroundColor: 'rgb(var(--color-background))',
-                  borderRadius: '0.75rem', // rounded-xl
+                  backgroundColor: 'rgb(var(--color-surface))', // Use standard surface color
+                  borderRadius: '0.375rem',
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: error ? 'rgb(var(--color-error))' : 'rgb(var(--color-border))',
+                    borderColor: error ? 'rgb(var(--color-error))' : 'rgb(var(--color-border))', // Use tailwind var
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
                     borderColor: error ? 'rgb(var(--color-error))' : 'rgb(var(--color-primary))',
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                     borderColor: error ? 'rgb(var(--color-error))' : 'rgb(var(--color-primary))',
-                    borderWidth: '2px',
+                    borderWidth: '4px', // Match focus ring roughly
+                    borderColor: 'rgb(var(--color-primary))',
+                    opacity: 0.1, // Ring opacity simulation? No, MUI handles this differently.
+                    // Better to just match border color for now.
                   },
                 },
               },
@@ -144,15 +146,41 @@ export default function CustomDateTimePicker({
                 '& .MuiInputBase-root': {
                   paddingRight: '14px',
                 },
-                // Hide the label if we want to rely on the external label + placeholder
                 '& .MuiInputLabel-root': {
                   display: 'none',
+                },
+                '& fieldset': {
+                  top: 0, // Remove notch spacing
+                  legend: { display: 'none' }, // Hide legend notch
                 },
               },
             },
             dialog: {
+              style: { zIndex: 10001 },
               sx: {
                 '& .MuiDialog-paper': {
+                  backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                  color: isDark ? '#f8fafc' : '#0f172a',
+                  border: '1px solid rgb(var(--color-border))',
+                },
+                '& .MuiPickersDay-root': {
+                  color: isDark ? '#f8fafc' : '#0f172a',
+                  '&.Mui-selected': {
+                    backgroundColor: 'rgb(var(--color-primary)) !important',
+                  },
+                },
+                '& .MuiPickersCalendarHeader-label': {
+                  color: isDark ? '#f8fafc' : '#0f172a',
+                },
+                '& .MuiSvgIcon-root': {
+                  color: isDark ? '#94a3b8' : '#64748b',
+                },
+              },
+            },
+            popper: {
+              sx: {
+                zIndex: 10001,
+                '& .MuiPaper-root': {
                   backgroundColor: isDark ? '#1e293b' : '#ffffff',
                   color: isDark ? '#f8fafc' : '#0f172a',
                   border: '1px solid rgb(var(--color-border))',

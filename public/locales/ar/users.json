@@ -1,0 +1,170 @@
+{
+  "title": "المستخدمون العالميون",
+  "subtitle": "مراقبة وإدارة جميع المستخدمين عبر المنصة بأكملها.",
+  "create": "إنشاء مستخدم جديد",
+  "edit": "تعديل المستخدم",
+  "view": "عرض التفاصيل",
+  "delete": "حذف المستخدم",
+  "suspend": "تعليق المستخدم",
+  "activate": "تفعيل المستخدم",
+  "impersonate": "انتحال شخصية المستخدم",
+  "resetPassword": "إعادة تعيين كلمة المرور",
+  "filters": {
+    "title": "فلاتر متقدمة",
+    "searchByName": "البحث بالاسم",
+    "enterName": "أدخل الاسم...",
+    "role": "الدور",
+    "status": "حالة العمل"
+  },
+  "table": {
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "role": "الدور",
+    "status": "الحالة",
+    "actions": "الإجراءات",
+    "selected": "تم تحديد {{count}} مستخدم",
+    "cancelSelection": "إلغاء التحديد"
+  },
+  "form": {
+    "editTitle": "تعديل المستخدم",
+    "createTitle": "إنشاء مستخدم جديد",
+    "editSubtitle": "تحديث التفاصيل لـ {{name}}",
+    "createSubtitle": "املأ المعلومات أدناه لإضافة مستخدم جديد.",
+    "personalInfo": "المعلومات الشخصية",
+    "roleAccess": "الدور والوصول",
+    "security": "الأمان",
+    "profileImage": "صورة الملف الشخصي",
+    "imageHelp": "تحميل صورة ملف شخصي (JPG، PNG، بحد أقصى 5 ميجابايت)",
+    "firstName": "الاسم الأول",
+    "firstNamePlaceholder": "جون",
+    "lastName": "اسم العائلة",
+    "lastNamePlaceholder": "دو",
+    "email": "عنوان البريد الإلكتروني",
+    "emailPlaceholder": "john@example.com",
+    "phone": "رقم الهاتف",
+    "phonePlaceholder": "+1 234 567 8900",
+    "role": "الدور",
+    "accountStatus": "حالة الحساب",
+    "selectStatus": "اختر الحالة",
+    "assignedDealership": "المعرض المعين",
+    "selectDealership": "اختر المعرض...",
+    "customPermissions": "صلاحيات مخصصة",
+    "password": "كلمة المرور",
+    "confirmPassword": "تأكيد كلمة المرور",
+    "management": "إدارة {{category}}",
+    "selectAll": "تحديد الكل",
+    "deselectAll": "إلغاء تحديد الكل"
+  },
+  "permissions": {
+    "categories": {
+      "system": "نظام",
+      "admin": "مشرف",
+      "quotes": "عروض أسعار",
+      "dealer": "وكيل",
+      "staff": "موظفين",
+      "user": "مستخدم",
+      "role": "دور",
+      "dealership": "معرض",
+      "notifications": "إشعارات",
+      "audit": "تدقيق",
+      "impersonation": "انتحال شخصية"
+    },
+    "system.configure": {
+      "label": "تكوين النظام",
+      "description": "يمكن تكوين إعدادات النظام"
+    },
+    "system.configuration": {
+      "label": "تكوين النظام",
+      "description": "يمكن تعديل إعدادات النظام"
+    },
+    "admin.create": {
+      "label": "إنشاء مشرف",
+      "description": "يمكن إنشاء مشرفين جدد"
+    },
+    "admin.read": {
+      "label": "عرض المشرف",
+      "description": "يمكن عرض سجلات التدقيق"
+    },
+    "admin.update": {
+      "label": "تحديث المشرف",
+      "description": "يمكن تحديث تفاصيل المشرف"
+    },
+    "admin.delete": {
+      "label": "حذف المشرف",
+      "description": "يمكن حذف المشرفين"
+    },
+    "dealership.assign": {
+      "label": "تعيين معرض",
+      "description": "يمكن تعيين مستخدمين للمعارض"
+    },
+    "dealership.create": {
+      "label": "إنشاء معرض",
+      "description": "يمكن إنشاء معارض جديدة"
+    },
+    "dealership.delete": {
+      "label": "حذف معرض",
+      "description": "يمكن حذف المعارض"
+    },
+    "dealership.update": {
+      "label": "تحديث معرض",
+      "description": "يمكن تحديث تفاصيل المعرض"
+    },
+    "dealership.view": {
+      "label": "عرض معرض",
+      "description": "يمكن عرض تفاصيل المعرض"
+    },
+    "notifications.broadcast": {
+      "label": "بث الإشعارات",
+      "description": "يمكن إرسال إشعارات بث لجميع المستخدمين"
+    },
+    "notifications.create": {
+      "label": "إنشاء إشعارات",
+      "description": "يمكن إنشاء إشعارات نظام جديدة"
+    },
+    "quotes.create": {
+      "label": "إنشاء عروض أسعار",
+      "description": "يمكن إنشاء عروض أسعار جديدة"
+    }
+  },
+  "messages": {
+    "userCreated": "تم إنشاء المستخدم",
+    "userUpdated": "تم تحديث المستخدم",
+    "userDeleted": "تم حذف المستخدم",
+    "newAdded": "تم إضافة مستخدم جديد.",
+    "detailsUpdated": "تم تحديث تفاصيل المستخدم بنجاح.",
+    "deletedSuccess": "تم حذف المستخدم.",
+    "confirmDelete": "هل أنت متأكد من حذف هذا المستخدم نهائيًا؟",
+    "confirmSuspend": "تعليق {{name}}؟",
+    "confirmActivate": "إعادة تفعيل {{name}}؟",
+    "activateUser": "تفعيل المستخدم؟",
+    "suspendUser": "تعليق المستخدم؟",
+    "yesDelete": "نعم، احذف",
+    "yesSuspend": "نعم، علق",
+    "yesActivate": "نعم، فعل",
+    "processed": "تم المعالجة!",
+    "bulkProcessed": "تم {{action}} {{count}} مستخدم.",
+    "resetPasswordTitle": "إعادة تعيين كلمة المرور",
+    "resetPasswordInstr": "اختر كيفية إعادة تعيين كلمة المرور لـ <b>{{name}}</b>:",
+    "autoGenerate": "توليد تلقائي",
+    "setManually": "تعيين يدويًا",
+    "resetSuccessTitle": "تم إعادة تعيين كلمة المرور بنجاح",
+    "resetSuccessBody": "تم إعادة تعيين كلمة المرور.",
+    "tempPassword": "كلمة المرور المؤقتة:",
+    "emailSent": "تم إرسال بريد إلكتروني أيضًا إلى المستخدم.",
+    "success": "نجاح"
+  },
+  "validation": {
+    "firstNameRequired": "الاسم الأول مطلوب",
+    "nameInvalid": "يمكن أن يحتوي الاسم فقط على أحرف ومسافات وواصلات وفواصل عليا",
+    "lastNameRequired": "اسم العائلة مطلوب",
+    "emailInvalid": "عنوان بريد إلكتروني غير صالح",
+    "emailRequired": "البريد الإلكتروني مطلوب",
+    "phoneRequired": "رقم الهاتف مطلوب",
+    "phoneInvalid": "يجب أن يتكون رقم الهاتف من 10 أرقام بالضبط",
+    "roleRequired": "الدور مطلوب",
+    "statusRequired": "الحالة مطلوبة",
+    "passwordRequired": "كلمة المرور مطلوبة",
+    "passwordMin": "يجب أن تتكون كلمة المرور من 6 أحرف على الأقل",
+    "passwordMatch": "يجب أن تتطابق كلمات المرور"
+  }
+}

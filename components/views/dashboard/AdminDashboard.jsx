@@ -1,391 +1,201 @@
-'use client';
-import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import ProtectedRoute from '../../common/ProtectedRoute';
-import ActivityFeed from '../../common/ActivityTimeline';
-import DataTable from '../../common/DataTable';
-import QuickActionsPanel from '../../common/QuickActionsPanel';
-import StatCard from '../../common/StatCard';
+import { useState, useEffect } from 'react';
 import {
-  Building2,
   FileText,
-  ClipboardCheck,
+  Clock,
+  ArrowRight,
   Users,
-  UserCog,
-  Settings,
-  MapPin,
-  Eye,
-  Edit2,
-  Trash2,
-  Phone,
-  Mail,
+  Building2,
+  Calendar,
+  Activity,
+  ChevronRight,
 } from 'lucide-react';
-import GenericFormModal from '../../common/FormModal';
-import Swal from 'sweetalert2';
-import * as yup from 'yup';
+import { useAuth } from '@/context/AuthContext';
+import Link from 'next/link';
+import { useTranslation, useLanguage } from '@/context/LanguageContext';
+import { formatDate, translateUserName } from '@/utils/i18n';
 
-const dealershipSchema = yup.object().shape({
-  name: yup.string().required('Required'),
-  location: yup.string().required('Required'),
-  manager: yup.string().required('Required'),
-});
+import StatCard from '@/components/common/StatCard';
+import ActivityTimeline from '@/components/common/ActivityTimeline';
 
-const managerSchema = yup.object().shape({
-  name: yup.string().required('Required'),
-  email: yup.string().email('Invalid email').required('Required'),
-  role: yup.string().required('Required'),
-});
+const ActionCard = ({ title, desc, icon: Icon, onClick, colorClass, borderClass }) => (
+  <button
+    onClick={onClick}
+    className={`group relative flex items-center justify-between p-4 rounded-xl border bg-[rgb(var(--color-surface))] transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 w-full text-left ${borderClass || 'border-[rgb(var(--color-border))]'}`}
+  >
+    <div className="flex items-start gap-4">
+      <div
+        className={`p-2 rounded-lg bg-[rgb(var(--color-background))] text-[rgb(var(--color-text-muted))] group-hover:text-white group-hover:bg-gradient-to-br ${colorClass} transition-all duration-300 shadow-sm`}
+      >
+        <Icon size={18} />
+      </div>
+      <div>
+        <h4 className="font-bold text-[rgb(var(--color-text))] text-[13px]">{title}</h4>
+        {desc && (
+          <p className="text-[11px] text-[rgb(var(--color-text-muted))] mt-0.5 leading-tight">
+            {desc}
+          </p>
+        )}
+      </div>
+    </div>
+    <ChevronRight
+      size={16}
+      className="text-[rgb(var(--color-border))] group-hover:text-[rgb(var(--color-primary))] transform group-hover:translate-x-1 transition-all"
+    />
+  </button>
+);
 
-export default function AdminDashboard() {
-  const [isAddDealershipOpen, setIsAddDealershipOpen] = useState(false);
-  const [isAddManagerOpen, setISAddManagerOpen] = useState(false);
+export default function AdminDashboard({
+  stats = { quotes: 0, pending: 0, users: 0, dealers: 0 },
+  recentQuotes = [],
+  recentActivity = [],
+  loading = false,
+}) {
+  const { user } = useAuth();
+  const { t } = useTranslation('dashboard');
+  const { t: tCommon } = useLanguage();
   const router = useRouter();
 
-  const [managerOptions, setManagerOptions] = useState([]);
-
-  useEffect(() => {
-    const storedManagers = localStorage.getItem('managers_data');
-    if (storedManagers) {
-      try {
-        const managers = JSON.parse(storedManagers);
-        setManagerOptions(managers.map((m) => ({ value: m.name, label: m.name })));
-      } catch (e) {
-        console.error('Failed to parse managers', e);
-      }
-    } else {
-      setManagerOptions([{ value: 'John Doe', label: 'John Doe' }]);
-    }
-  }, [isAddDealershipOpen]);
-
-  const stats = [
-    {
-      title: 'Total Dealerships',
-      value: '248',
-      helperText: '+24 new this month',
-      trend: { positive: true, label: '9.3%' },
-      icon: '🏢',
-      accent: '#675AF0',
-    },
-    {
-      title: 'Total Quotes',
-      value: '1,847',
-      helperText: '+156 this week',
-      trend: { positive: true, label: '4.1%' },
-      icon: '📊',
-      accent: '#FF7A00',
-    },
-    {
-      title: 'Pending Approvals',
-      value: '142',
-      helperText: 'Require urgent action',
-      trend: { positive: false, label: '2.3%' },
-      icon: '⏳',
-      accent: '#1ABC9C',
-    },
-    {
-      title: 'Conversion Rate',
-      value: '68.4%',
-      helperText: 'Above industry avg. (52%)',
-      trend: { positive: true, label: '1.8%' },
-      icon: '📈',
-      accent: '#FF3D71',
-    },
-  ];
-
-  const activity = [
-    {
-      id: 'act-1',
-      name: 'Dealer Auto Drive',
-      action: 'added new quote',
-      subject: '#104',
-      time: '2 minutes ago',
-      avatar: 'https://i.pravatar.cc/80?img=5',
-    },
-    {
-      id: 'act-2',
-      name: 'Manager John Smith',
-      action: 'approved quote',
-      subject: '#98',
-      time: '15 minutes ago',
-      avatar: 'https://i.pravatar.cc/80?img=7',
-    },
-    {
-      id: 'act-3',
-      name: 'User Sarah Johnson',
-      action: 'submitted a new quote request',
-      subject: '#101',
-      time: '32 minutes ago',
-      avatar: 'https://i.pravatar.cc/80?img=10',
-    },
-  ];
-
-  const quickActions = [
-    {
-      label: 'Add Dealership',
-      description: 'Create a new partner account',
-      icon: '➕',
-      actionType: () => setIsAddDealershipOpen(true),
-    },
-    {
-      label: 'View Pending Quotes',
-      description: 'See all quotes awaiting approval',
-      icon: '📥',
-      actionType: () => router.push('/quotes'),
-    },
-    { label: 'Generate Report', description: 'Download latest performance report', icon: '📑' },
-    {
-      label: 'Add Manager',
-      description: 'Invite a new team member',
-      icon: '👤',
-      actionType: () => {
-        setISAddManagerOpen(true);
-      },
-    },
-  ];
-
-  const initialDealerships = [
-    {
-      id: 'dealer-1',
-      name: 'Premium Motors',
-      location: 'Mumbai, Maharashtra',
-      manager: 'John Doe',
-      quotes: 142,
-      conversion: 72,
-      status: 'active',
-      statusLabel: 'Active',
-    },
-    {
-      id: 'dealer-2',
-      name: 'Elite Auto Hub',
-      location: 'Bangalore, Karnataka',
-      manager: 'Priya Malhotra',
-      quotes: 98,
-      conversion: 63,
-      status: 'pending',
-      statusLabel: 'Pending Review',
-    },
-    {
-      id: 'dealer-3',
-      name: 'Velocity Motors',
-      location: 'Delhi NCR',
-      manager: 'Amit Desai',
-      quotes: 120,
-      conversion: 69,
-      status: 'active',
-      statusLabel: 'Active',
-    },
-    {
-      id: 'dealer-4',
-      name: 'Cityline Cars',
-      location: 'Pune, Maharashtra',
-      manager: 'Sneha Kapoor',
-      quotes: 74,
-      conversion: 58,
-      status: 'inactive',
-      statusLabel: 'On Hold',
-    },
-  ];
-
-  const handleSaveDealership = (data) => {
-    try {
-      const currentData = JSON.parse(localStorage.getItem('dealerships') || '[]');
-      const newDealer = {
-        ...data,
-        id: `dealer-${Date.now()}`,
-        quotes: 0,
-        conversion: 0,
-        status: data.status || 'active',
-      };
-      const updatedData = [newDealer, ...currentData];
-      localStorage.setItem('dealerships', JSON.stringify(updatedData));
-      setIsAddDealershipOpen(false);
-      Swal.fire('Saved!', 'New Partner added successfully', 'success');
-    } catch (error) {
-      console.error('Error saving dealership:', error);
-      Swal.fire('Error', 'Failed to save dealership', 'error');
-    }
-  };
-
-  const handleSaveManager = (data) => {
-    try {
-      const currentManagers = JSON.parse(localStorage.getItem('managers_data') || '[]');
-      const newManager = {
-        ...data,
-        id: `m-${Date.now()}`,
-        status: 'active',
-        joinedDate: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: '2-digit',
-          year: 'numeric',
-        }),
-      };
-      const updatedManagers = [newManager, ...currentManagers];
-      localStorage.setItem('managers_data', JSON.stringify(updatedManagers));
-      setISAddManagerOpen(false);
-      Swal.fire('Invited!', 'New Manager invited successfully', 'success');
-      setManagerOptions(updatedManagers.map((m) => ({ value: m.name, label: m.name })));
-    } catch (error) {
-      console.error('Error saving manager:', error);
-      Swal.fire('Error', 'Failed to save manager', 'error');
-    }
-  };
+  if (loading)
+    return (
+      <div className="p-12 text-center text-[rgb(var(--color-text-muted))]">
+        {tCommon('loading')}
+      </div>
+    );
 
   return (
-    <ProtectedRoute roles={['admin', 'super_admin']}>
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {stats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 pb-6 border-b border-[rgb(var(--color-border))]">
+        <div className="space-y-1">
+          <h2 className="text-3xl font-extrabold text-[rgb(var(--color-text))] tracking-tight">
+            {(() => {
+              const displayName =
+                user?.full_name ||
+                (user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : null) ||
+                user?.name ||
+                user?.username ||
+                'Admin';
+              const userName = translateUserName(displayName, tCommon);
+              const marker = '___NAME___';
+              const greeting = t('welcomeBack', { userName: marker });
+              const [prefix, suffix] = greeting.split(marker);
+              return (
+                <>
+                  {prefix}
+                  <span className="text-[rgb(var(--color-primary))] capitalize">{userName}</span>
+                  {suffix}
+                </>
+              );
+            })()}
+          </h2>
+          <p className="text-[rgb(var(--color-text-muted))] text-sm font-medium flex items-center gap-2">
+            <Calendar size={14} className="text-[rgb(var(--color-primary))]" />
+            <span>{formatDate(new Date())}</span>
+            <span className="w-1 h-1 rounded-full bg-[rgb(var(--color-border))] mx-1"></span>
+            <span className="opacity-80">{t('subtitle')}</span>
+          </p>
         </div>
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <ActivityFeed items={activity} />
-          </div>
-          <QuickActionsPanel actions={quickActions} />
-        </div>
-        <DataTable
-          data={initialDealerships}
-          columns={[
-            {
-              header: 'Dealership',
-              sortable: true,
-              accessor: (row) => (
-                <div>
-                  <div className="font-semibold text-[rgb(var(--color-text))]">{row.name}</div>
-                  <div className="flex items-center gap-1 text-[rgb(var(--color-text-muted))] text-xs">
-                    <MapPin size={12} /> {row.location}
-                  </div>
-                </div>
-              ),
-            },
-            {
-              header: 'Manager',
-              accessor: 'manager',
-              className: 'text-[rgb(var(--color-text-muted))]',
-            },
-            {
-              header: 'Status',
-              accessor: (row) => {
-                const statusColors = {
-                  active:
-                    'bg-[rgb(var(--color-success))/0.1] text-[rgb(var(--color-success))] border-[rgb(var(--color-success))/0.2]',
-                  inactive:
-                    'bg-[rgb(var(--color-text-muted))/0.1] text-[rgb(var(--color-text-muted))] border-[rgb(var(--color-text-muted))/0.2]',
-                  suspended:
-                    'bg-[rgb(var(--color-error))/0.1] text-[rgb(var(--color-error))] border-[rgb(var(--color-error))/0.2]',
-                  pending:
-                    'bg-[rgb(var(--color-warning))/0.1] text-[rgb(var(--color-warning))] border-[rgb(var(--color-warning))/0.2]',
-                };
-                return (
-                  <span
-                    className={`px-2 py-1 rounded-md text-xs font-medium border ${statusColors[row.status] || statusColors.active}`}
-                  >
-                    {row.status
-                      ? row.status.charAt(0).toUpperCase() + row.status.slice(1)
-                      : 'Active'}
-                  </span>
-                );
-              },
-            },
-            {
-              header: 'Performance',
-              accessor: (row) => (
-                <div className="text-xs">
-                  <span className="text-[rgb(var(--color-text))] font-medium">
-                    {row.quotes} Quotes
-                  </span>
-                  <span className="text-[rgb(var(--color-text-muted))] mx-1">•</span>
-                  <span className="text-[rgb(var(--color-success))]">{row.conversion}% Conv.</span>
-                </div>
-              ),
-            },
-          ]}
-          searchKeys={['name', 'location', 'manager']}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total Revenue */}
+        <StatCard
+          title={t('stats.totalRevenue')}
+          value={`$${Number(stats.revenueStats?.total_revenue || stats.revenue || 0).toLocaleString()}`}
+          icon={<FileText size={24} />}
+          helperText={t('stats.grossValue')}
+          accent="#22c55e" // green-500
+          trend={{
+            positive: Number(stats.revenueStats?.revenue_growth) >= 0,
+            label: `${stats.revenueStats?.revenue_growth || 0}%`,
+          }}
         />
-        <GenericFormModal
-          isOpen={isAddDealershipOpen}
-          onClose={() => setIsAddDealershipOpen(false)}
-          onSave={handleSaveDealership}
-          title="Add Dealership"
-          validationSchema={dealershipSchema}
-          fields={[
-            {
-              name: 'name',
-              label: 'Dealership Name',
-              placeholder: 'e.g. Premium Motors',
-              icon: Building2,
-            },
-            { name: 'location', label: 'Location', placeholder: 'City, State', icon: MapPin },
-            {
-              type: 'row',
-              fields: [
-                {
-                  name: 'manager',
-                  label: 'Manager Name',
-                  type: 'select',
-                  options: managerOptions,
-                  placeholder: 'Select Manager',
-                  icon: Users,
-                },
-                {
-                  name: 'phone',
-                  label: 'Contact Number',
-                  placeholder: '10-digit mobile',
-                  icon: Phone,
-                  format: 'phone',
-                  maxLength: 10,
-                },
-              ],
-            },
-            {
-              name: 'email',
-              label: 'Email Address',
-              placeholder: 'manager@example.com',
-              icon: Mail,
-            },
-            {
-              name: 'status',
-              label: 'Account Status',
-              type: 'select',
-              defaultValue: 'active',
-              options: [
-                { value: 'active', label: 'Active' },
-                { value: 'pending', label: 'Pending Review' },
-                { value: 'inactive', label: 'Inactive' },
-                { value: 'suspended', label: 'Suspended' },
-              ],
-            },
-          ]}
+
+        {/* Total Quotes */}
+        <StatCard
+          title={t('stats.totalQuotes')}
+          value={stats.quoteStats?.total_quotes || stats.quotes || 0}
+          icon={<FileText size={24} />}
+          helperText={t('stats.quotesGenerated')}
+          accent="#3b82f6" // blue-500
+          trend={{
+            positive: Number(stats.quoteStats?.monthly_growth) >= 0,
+            label: `${stats.quoteStats?.monthly_growth || 0}%`,
+          }}
         />
-        <GenericFormModal
-          isOpen={isAddManagerOpen}
-          onClose={() => setISAddManagerOpen(false)}
-          onSave={handleSaveManager}
-          title="Add Manager"
-          validationSchema={managerSchema}
-          fields={[
-            { name: 'name', label: 'Full Name', placeholder: 'Enter full name', icon: Users },
-            {
-              name: 'email',
-              label: 'Email Address',
-              placeholder: 'Enter email address',
-              icon: MapPin,
-            },
-            {
-              name: 'role',
-              label: 'Role',
-              type: 'select',
-              defaultValue: 'Manager',
-              options: [
-                { value: 'Manager', label: 'Manager' },
-                { value: 'Admin', label: 'Admin' },
-              ],
-              icon: UserCog,
-            },
-          ]}
+
+        {/* Active Users */}
+        <StatCard
+          title={t('stats.totalUsers')}
+          value={stats.userStats?.active_users || stats.users || 0}
+          icon={<Users size={24} />}
+          helperText={`${stats.userStats?.total_users || 0} registered`}
+          accent="#a855f7" // purple-500
+        />
+
+        {/* Support Tickets */}
+        <StatCard
+          title={t('stats.supportTickets')}
+          value={stats.support?.open_tickets || 0}
+          icon={<Clock size={24} />}
+          helperText={`${stats.support?.total_tickets || 0} ${t('stats.totalTickets')}`}
+          accent="#f97316" // orange-500
+          trend={{
+            positive: false, // High open tickets usually bad, but context depends
+            label: `${stats.support?.resolved_tickets || 0} ${t('stats.resolvedTickets')}`,
+          }}
         />
       </div>
-    </ProtectedRoute>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-[rgb(var(--color-surface))] rounded-2xl border border-[rgb(var(--color-border))] shadow-sm overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-[rgb(var(--color-border))] flex items-center justify-between bg-[rgb(var(--color-background))/0.02]">
+            <h3 className="text-sm font-bold text-[rgb(var(--color-text))] uppercase tracking-wide flex items-center gap-2">
+              <Activity size={16} className="text-[rgb(var(--color-primary))]" />
+              {t('recentActivity')}
+            </h3>
+            <Link
+              href="/session_management"
+              className="text-xs font-semibold text-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary-dark))] transition-colors"
+            >
+              {t('viewAll')}
+            </Link>
+          </div>
+
+          <div className="p-6">
+            <ActivityTimeline activities={recentActivity} />
+          </div>
+        </div>
+
+        <div className="bg-[rgb(var(--color-surface))] rounded-2xl border border-[rgb(var(--color-border))] shadow-sm p-6">
+          <h3 className="text-lg font-bold text-[rgb(var(--color-text))] mb-4">
+            {t('quickActions')}
+          </h3>
+          <div className="space-y-3">
+            <ActionCard
+              title={t('actions.manageDealerships')}
+              desc="Manage users and staff across your network"
+              icon={Users}
+              onClick={() => router.push('/users')}
+              colorClass="from-purple-500 to-purple-600"
+            />
+            <ActionCard
+              title={t('actions.myDealerships')}
+              desc="View and manage effectively your organization's dealership details"
+              icon={Building2}
+              onClick={() => router.push('/dealerships')}
+              colorClass="from-blue-500 to-blue-600"
+            />
+            <ActionCard
+              title={t('actions.viewQuotes')}
+              desc="Review and process quote requests"
+              icon={FileText}
+              onClick={() => router.push('/quotes')}
+              colorClass="from-green-500 to-green-600"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,0 +1,125 @@
+{
+  "save": "सहेजें",
+  "cancel": "रद्द करें",
+  "edit": "संपादित करें",
+  "delete": "हटाएं",
+  "actions": "क्रियाएं",
+  "status": "स्थिति",
+  "loading": "लोड हो रहा है...",
+  "noData": "कोई डेटा उपलब्ध नहीं",
+  "search": "खोजें...",
+  "filter": "फ़िल्टर",
+  "you": "आप",
+  "error": "त्रुटि",
+  "notifications": {
+    "title": "सूचनाएं",
+    "clearAll": "सभी साफ़ करें",
+    "markAsRead": "पढ़ा हुआ मानें"
+  },
+  "roles": {
+    "super_admin": "सुपर एडमिन",
+    "admin": "एडमिन",
+    "dealer_manager": "डीलर मैनेजर",
+    "admin_work": "एडमिन",
+    "dealer_work": "डीलर वर्क",
+    "dealer": "डीलर",
+    "dealer_staff": "डीलर कर्मचारी",
+    "support_staff": "सहायता कर्मचारी",
+    "user": "उपयोगकर्ता"
+  },
+  "statuses": {
+    "active": "सक्रिय",
+    "inactive": "निष्क्रिय",
+    "suspended": "निलंबित"
+  },
+  "theme": {
+    "light": "लाइट मोड",
+    "dark": "डार्क मोड",
+    "slate": "स्लेट मोड",
+    "luxury": "लक्जरी मोड",
+    "preference": "थीम वरीयता"
+  },
+  "user": "उपयोगकर्ता",
+  "searchPlaceholder": "कुछ भी खोजें...",
+  "sellMadeSimple": "बिक्री। अब आसान।",
+  "logout": "लॉगआउट",
+  "select": "चुनें",
+  "selectLanguage": "भाषा चुनें",
+  "table": {
+    "searchPlaceholder": "खोजें...",
+    "noResults": "आपकी खोज के लिए कोई परिणाम नहीं मिले।",
+    "tryAdjusting": "अपने फ़िल्टर या खोज शब्द को समायोजित करने का प्रयास करें।",
+    "resetFilters": "फ़िल्टर रीसेट करें",
+    "filters": "फ़िल्टर",
+    "clearFilters": "फ़िल्टर साफ़ करें",
+    "showing": "दिखा रहा है",
+    "of": "का"
+  },
+  "form": {
+    "add": "नया जोड़ें",
+    "save": "सहेजें",
+    "saving": "सहेजा जा रहा है...",
+    "saveChanges": "परिवर्तन सहेजें",
+    "cancel": "रद्द करें",
+    "enterDetails": "कृपया नीचे विवरण दर्ज करें।",
+    "editTitle": "विवरण संपादित करें",
+    "createTitle": "नया बनाएं",
+    "editSubtitle": "नीचे दी गई जानकारी अपडेट करें।",
+    "createSubtitle": "आवश्यक जानकारी भरें।"
+  },
+  "time": {
+    "m": "मिंट",
+    "h": "घं",
+    "d": "दि"
+  },
+  "alerts": {
+    "systemAlert": "सिस्टम अलर्ट",
+    "securityBreach": "सुरक्षा उल्लंघन का पता चला",
+    "backendAlert": "बैकएंड सिस्टम अलर्ट",
+    "criticalAttention": "महत्वपूर्ण प्रणाली ध्यान आवश्यक है।",
+    "viewDetails": "विवरण देखें"
+  },
+  "impersonation": {
+    "mode": "प्रतिरूपण मोड",
+    "viewingAs": "के रूप में देखना:",
+    "originalAdmin": "मूल व्यवस्थापक:",
+    "exit": "प्रतिरूपण से बाहर निकलें"
+  },
+  "navigation": {
+    "management": "प्रबंधन",
+    "dashboard": "डैशबोर्ड",
+    "globalUsers": "ग्लोबल उपयोगकर्ता",
+    "allDealerships": "सभी डीलरशिप",
+    "quoteManagement": "कोट प्रबंधन",
+    "reports": "रिपोर्ट और एनालिटिक्स",
+    "system": "सिस्टम",
+    "sessionManagement": "सत्र प्रबंधन",
+    "auditLogs": "ऑडिट लॉग",
+    "rolePermissions": "भूमिकाएँ और अनुमतियाँ",
+    "impersonationLogs": "प्रतिरूपण इतिहास",
+    "translations": "अनुवाद एक्सप्लोरर",
+    "support": "डीलर सहायता",
+    "globalSettings": "ग्लोबल सेटिंग्स",
+    "systemManagement": "सिस्टम प्रबंधन",
+    "myDealerships": "मेरी डीलरशिप",
+    "quotes": "कोट",
+    "dealers": "डीलर",
+    "analytics": "एनालिटिक्स",
+    "sessions": "सत्र",
+    "notifications": "सूचनाएं",
+    "settings": "सेटिंग्स",
+    "dealerPortal": "डीलर पोर्टल",
+    "staffManagement": "स्टाफ प्रबंधन",
+    "mySettings": "मेरी सेटिंग्स",
+    "notificationCenter": {
+      "title": "सूचना केंद्र",
+      "broadcasting": "प्रसारण",
+      "email": "ईमेल अभियान"
+    },
+    "contentManagement": {
+      "title": "सामग्री प्रबंधन",
+      "webContent": "वेब सामग्री (CMS)",
+      "pricingConfig": "मूल्य निर्धारण और कॉन्फ़िगरेशन"
+    }
+  }
+}

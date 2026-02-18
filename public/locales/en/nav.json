@@ -1,0 +1,13 @@
+{
+  "dashboard": "Dashboard",
+  "quotes": "Quotes",
+  "dealerships": "Dealerships",
+  "users": "Users",
+  "staff": "Staff",
+  "inventory": "Inventory",
+  "leads": "Leads",
+  "support": "Support",
+  "settings": "Settings",
+  "profile": "Profile",
+  "logout": "Log Out"
+}
