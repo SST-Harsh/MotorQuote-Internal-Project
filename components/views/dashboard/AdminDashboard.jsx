@@ -10,6 +10,7 @@ import {
   Activity,
   ChevronRight,
 } from 'lucide-react';
+
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import { useTranslation, useLanguage } from '@/context/LanguageContext';
