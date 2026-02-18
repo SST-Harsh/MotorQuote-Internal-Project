@@ -19,6 +19,7 @@ module.exports = {
       fontFamily: {
         racing: ['Racing Sans One', 'sans-serif'],
         public: ['Public Sans', 'sans-serif'],
+        sans: ['var(--font-poppins)', 'Public Sans', 'sans-serif'],
       },
       backgroundImage: {
         'motorquote-overlay':

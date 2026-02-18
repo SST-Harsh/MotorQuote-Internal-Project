@@ -1,0 +1,170 @@
+{
+  "title": "वैश्विक उपयोगकर्ता",
+  "subtitle": "पूरे प्लेटफॉर्म पर सभी उपयोगकर्ताओं की निगरानी और प्रबंधन करें।",
+  "create": "नया उपयोगकर्ता बनाएं",
+  "edit": "उपयोगकर्ता संपादित करें",
+  "view": "विवरण देखें",
+  "delete": "उपयोगकर्ता हटाएं",
+  "suspend": "उपयोगकर्ता निलंबित करें",
+  "activate": "उपयोगकर्ता सक्रिय करें",
+  "impersonate": "उपयोगकर्ता प्रतिरूपण (Impersonate)",
+  "resetPassword": "पासवर्ड रीसेट करें",
+  "filters": {
+    "title": "उन्नत फ़िल्टर",
+    "searchByName": "नाम से खोजें",
+    "enterName": "नाम दर्ज करें...",
+    "role": "भूमिका (Role)",
+    "status": "कार्य स्थिति"
+  },
+  "table": {
+    "name": "नाम",
+    "email": "ईमेल",
+    "role": "भूमिका",
+    "status": "स्थिति",
+    "actions": "कार्रवाई",
+    "selected": "{{count}} उपयोगकर्ता चयनित",
+    "cancelSelection": "चयन रद्द करें"
+  },
+  "form": {
+    "editTitle": "उपयोगकर्ता संपादन",
+    "createTitle": "नया उपयोगकर्ता बनाएं",
+    "editSubtitle": "{{name}} के लिए विवरण अपडेट करें",
+    "createSubtitle": "नया उपयोगकर्ता जोड़ने के लिए नीचे दी गई जानकारी भरें।",
+    "personalInfo": "व्यक्तिगत जानकारी",
+    "roleAccess": "भूमिका और पहुंच",
+    "security": "सुरक्षा",
+    "profileImage": "प्रोफ़ाइल छवि",
+    "imageHelp": "प्रोफ़ाइल चित्र अपलोड करें (JPG, PNG, अधिकतम 5MB)",
+    "firstName": "पहला नाम",
+    "firstNamePlaceholder": "John",
+    "lastName": "उपनाम",
+    "lastNamePlaceholder": "Doe",
+    "email": "ईमेल पता",
+    "emailPlaceholder": "john@example.com",
+    "phone": "फ़ोन नंबर",
+    "phonePlaceholder": "+1 234 567 8900",
+    "role": "भूमिका",
+    "accountStatus": "खाता स्थिति",
+    "selectStatus": "स्थिति चुनें",
+    "assignedDealership": "आवंटित डीलरशिप",
+    "selectDealership": "डीलरशिप चुनें...",
+    "customPermissions": "कस्टम अनुमतियाँ",
+    "password": "पासवर्ड",
+    "confirmPassword": "पासवर्ड की पुष्टि करें",
+    "management": "{{category}} प्रबंधन",
+    "selectAll": "सभी चुनें",
+    "deselectAll": "सभी अचयनित करें"
+  },
+  "permissions": {
+    "categories": {
+      "system": "सिस्टम",
+      "admin": "एडमिन",
+      "quotes": "कोट्स",
+      "dealer": "डीलर",
+      "staff": "स्टाफ",
+      "user": "उपयोगकर्ता",
+      "role": "भूमिका",
+      "dealership": "डीलरशिप",
+      "notifications": "सूचनाएं",
+      "audit": "ऑडिट",
+      "impersonation": "प्रतिरूपण"
+    },
+    "system.configure": {
+      "label": "सिस्टम कॉन्फ़िगर करें",
+      "description": "सिस्टम सेटिंग्स कॉन्फ़िगर कर सकते हैं"
+    },
+    "system.configuration": {
+      "label": "सिस्टम कॉन्फ़िगरेशन",
+      "description": "सिस्टम सेटिंग्स बदल सकते हैं"
+    },
+    "admin.create": {
+      "label": "एडमिन बनाएं",
+      "description": "नए एडमिन बना सकते हैं"
+    },
+    "admin.read": {
+      "label": "एडमिन देखें",
+      "description": "ऑडिट लॉग देख सकते हैं"
+    },
+    "admin.update": {
+      "label": "एडमिन अपडेट करें",
+      "description": "एडमिन जानकारी अपडेट कर सकते हैं"
+    },
+    "admin.delete": {
+      "label": "एडमिन हटाएं",
+      "description": "एडमिन हटा सकते हैं"
+    },
+    "dealership.assign": {
+      "label": "डीलरशिप आवंटित करें",
+      "description": "उपयोगकर्ताओं को डीलरशिप पर नियुक्त कर सकते हैं"
+    },
+    "dealership.create": {
+      "label": "डीलरशिप बनाएं",
+      "description": "नई डीलरशिप बना सकते हैं"
+    },
+    "dealership.delete": {
+      "label": "डीलरशिप हटाएं",
+      "description": "डीलरशिप हटा सकते हैं"
+    },
+    "dealership.update": {
+      "label": "डीलरशिप अपडेट करें",
+      "description": "डीलरशिप विवरण अपडेट कर सकते हैं"
+    },
+    "dealership.view": {
+      "label": "डीलरशिप देखें",
+      "description": "डीलरशिप विवरण देख सकते हैं"
+    },
+    "notifications.broadcast": {
+      "label": "प्रसारण सूचनाएं",
+      "description": "सभी उपयोगकर्ताओं को सूचनाएं भेज सकते हैं"
+    },
+    "notifications.create": {
+      "label": "सूचनाएं बनाएं",
+      "description": "नई सिस्टम सूचनाएं बना सकते हैं"
+    },
+    "quotes.create": {
+      "label": "कोट्स बनाएं",
+      "description": "नए कोट्स बना सकते हैं"
+    }
+  },
+  "messages": {
+    "userCreated": "उपयोगकर्ता बनाया गया",
+    "userUpdated": "उपयोगकर्ता अपडेट किया गया",
+    "userDeleted": "उपयोगकर्ता हटाया गया",
+    "newAdded": "नया उपयोगकर्ता जोड़ा गया।",
+    "detailsUpdated": "उपयोगकर्ता विवरण सफलतापूर्वक अपडेट किए गए।",
+    "deletedSuccess": "उपयोगकर्ता हटा दिया गया।",
+    "confirmDelete": "क्या आप इस उपयोगकर्ता को स्थायी रूप से हटाना चाहते हैं?",
+    "confirmSuspend": "क्या आप {{name}} को निलंबित करना चाहते हैं?",
+    "confirmActivate": "क्या आप {{name}} को पुनः सक्रिय करना चाहते हैं?",
+    "activateUser": "उपयोगकर्ता सक्रिय करें?",
+    "suspendUser": "उपयोगकर्ता निलंबित करें?",
+    "yesDelete": "हाँ, हटाएं",
+    "yesSuspend": "हाँ, निलंबित करें",
+    "yesActivate": "हाँ, सक्रिय करें",
+    "processed": "संसाधित!",
+    "bulkProcessed": "{{count}} उपयोगकर्ताओं को {{action}} किया गया है।",
+    "resetPasswordTitle": "पासवर्ड रीसेट करें",
+    "resetPasswordInstr": "<b>{{name}}</b> के लिए पासवर्ड कैसे रीसेट करें चुनें:",
+    "autoGenerate": "स्वचालित रूप से उत्पन्न करें",
+    "setManually": "मैन्युअल रूप से सेट करें",
+    "resetSuccessTitle": "पासवर्ड रीसेट सफल",
+    "resetSuccessBody": "पासवर्ड रीसेट कर दिया गया है।",
+    "tempPassword": "अस्थायी पासवर्ड:",
+    "emailSent": "उपयोगकर्ता को एक ईमेल भी भेजा गया है।",
+    "success": "सफल"
+  },
+  "validation": {
+    "firstNameRequired": "पहला नाम आवश्यक है",
+    "nameInvalid": "नाम में केवल अक्षर, स्थान, हाइफ़न और एपोस्ट्रोफ़ हो सकते हैं",
+    "lastNameRequired": "उपनाम आवश्यक है",
+    "emailInvalid": "अमान्य ईमेल पता",
+    "emailRequired": "ईमेल आवश्यक है",
+    "phoneRequired": "फ़ोन नंबर आवश्यक है",
+    "phoneInvalid": "फ़ोन नंबर ठीक 10 अंकों का होना चाहिए",
+    "roleRequired": "भूमिका आवश्यक है",
+    "statusRequired": "स्थिति आवश्यक है",
+    "passwordRequired": "पासवर्ड आवश्यक है",
+    "passwordMin": "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए",
+    "passwordMatch": "पासवर्ड मेल खाने चाहिए"
+  }
+}

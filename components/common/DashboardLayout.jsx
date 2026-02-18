@@ -1,5 +1,6 @@
+'use client';
 import Image from 'next/image';
-import Sidebar from './Sidebar';
+import SidebarNav from './Sidebar'; // Importing from Sidebar.jsx
 import TopBar from './TopBar';
 
 import { useState } from 'react';
@@ -10,15 +11,28 @@ const DashboardLayout = ({ sidebarSections, user, children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const getTitle = (path) => {
-    const page = path.split('/').pop() || 'Dashboard';
-    return page.charAt(0).toUpperCase() + page.slice(1);
+    if (path.includes('/admin/dashboard')) return 'Admin Dashboard';
+    if (path.includes('/admin/dealerships')) return 'Admin Dashboard';
+    if (path.includes('/admin/quotes')) return 'Admin Dashboard';
+    if (path.includes('/admin/approvals')) return 'Admin Dashboard';
+    if (path.includes('/admin/managers')) return 'Admin Dashboard';
+    if (path.includes('/admin/sellers')) return 'Admin Dashboard';
+    if (path.includes('/admin/settings')) return 'Admin Dashboard';
+    if (path.includes('/admin/notifications')) return 'Admin Dashboard';
+    if (path.includes('/super-admin/dashboard')) return 'Super Admin Dashboard';
+    if (path.includes('/super-admin/users')) return 'Super Admin Dashboard';
+    if (path.includes('/super-admin/roles')) return 'Super Admin Dashboard';
+    if (path.includes('/super-admin/notifications')) return 'Super Admin Dashboard';
+    if (path.includes('/dealer/dashboard')) return 'dealer Dashboard';
+
+    return 'Dashboard';
   };
 
   const title = getTitle(pathname);
 
   return (
     <div className="min-h-screen bg-background text-text">
-      <Sidebar
+      <SidebarNav
         sections={sidebarSections}
         user={user}
         isOpen={isSidebarOpen}

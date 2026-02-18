@@ -1,0 +1,170 @@
+{
+  "title": "વૈશ્વિક વપરાશકર્તાઓ",
+  "subtitle": "સમગ્ર પ્લેટફોર્મ પર તમામ વપરાશકર્તાઓનું નિરીક્ષણ અને સંચાલન કરો.",
+  "create": "નવો વપરાશકર્તા બનાવો",
+  "edit": "વપરાશકર્તા સંપાદિત કરો",
+  "view": "વિગતો જુઓ",
+  "delete": "વપરાશકર્તા કાઢી નાખો",
+  "suspend": "વપરાશકર્તા સસ્પેન્ડ કરો",
+  "activate": "વપરાશકર્તા સક્રિય કરો",
+  "impersonate": "વપરાશકર્તાનું અનુકરણ (Impersonate)",
+  "resetPassword": "પાસવર્ડ રીસેટ કરો",
+  "filters": {
+    "title": "અદ્યતન ફિલ્ટર્સ",
+    "searchByName": "નામ દ્વારા શોધો",
+    "enterName": "નામ દાખલ કરો...",
+    "role": "ભૂમિકા (Role)",
+    "status": "કાર્ય સ્થિતિ"
+  },
+  "table": {
+    "name": "નામ",
+    "email": "ઇમેઇલ",
+    "role": "ભૂમિકા",
+    "status": "સ્થિતિ",
+    "actions": "ક્રિયાઓ",
+    "selected": "{{count}} વપરાશકર્તાઓ પસંદ કરેલ",
+    "cancelSelection": "પસંદગી રદ કરો"
+  },
+  "form": {
+    "editTitle": "વપરાશકર્તા સંપાદિત કરો",
+    "createTitle": "નવો વપરાશકર્તા બનાવો",
+    "editSubtitle": "{{name}} માટે વિગતો અપડેટ કરો",
+    "createSubtitle": "નવો વપરાશકર્તા ઉમેરવા માટે નીચેની માહિતી ભરો.",
+    "personalInfo": "વ્યક્તિગત માહિતી",
+    "roleAccess": "ભૂમિકા અને accessક્સેસ",
+    "security": "સુરક્ષા",
+    "profileImage": "પ્રોફાઇલ છબી",
+    "imageHelp": "પ્રોફાઇલ ચિત્ર અપલોડ કરો (JPG, PNG, મહત્તમ 5MB)",
+    "firstName": "પ્રથમ નામ",
+    "firstNamePlaceholder": "John",
+    "lastName": "અટક",
+    "lastNamePlaceholder": "Doe",
+    "email": "ઇમેઇલ સરનામું",
+    "emailPlaceholder": "john@example.com",
+    "phone": "ફોન નંબર",
+    "phonePlaceholder": "+1 234 567 8900",
+    "role": "ભૂમિકા",
+    "accountStatus": "ખાતાની સ્થિતિ",
+    "selectStatus": "સ્થિતિ પસંદ કરો",
+    "assignedDealership": "સોંપેલ ડીલરશીપ",
+    "selectDealership": "ડીલરશીપ પસંદ કરો...",
+    "customPermissions": "કસ્ટમ પરવાનગીઓ",
+    "password": "પાસવર્ડ",
+    "confirmPassword": "પાસવર્ડની પુષ્ટિ કરો",
+    "management": "{{category}} મેનેજમેન્ટ",
+    "selectAll": "બધા પસંદ કરો",
+    "deselectAll": "બધા નાપસંદ કરો"
+  },
+  "permissions": {
+    "categories": {
+      "system": "સિસ્ટમ",
+      "admin": "એડમિન",
+      "quotes": "અવતરણ",
+      "dealer": "ડીલર",
+      "staff": "સભ્યો",
+      "user": "વપરાશકર્તા",
+      "role": "ભૂમિકા",
+      "dealership": "ડીલરશીપ",
+      "notifications": "સૂચનાઓ",
+      "audit": "ઓડિટ",
+      "impersonation": "અનુકરણ"
+    },
+    "system.configure": {
+      "label": "સિસ્ટમ રૂપરેખાંકિત કરો",
+      "description": "સિસ્ટમ સેટિંગ્સ રૂપરેખાંકિત કરી શકો છો"
+    },
+    "system.configuration": {
+      "label": "સિસ્ટમ રૂપરેખાંકન",
+      "description": "સિસ્ટમ સેટિંગ્સ બદલી શકો છો"
+    },
+    "admin.create": {
+      "label": "એડમિન બનાવો",
+      "description": "નવા એડમિન બનાવી શકો છો"
+    },
+    "admin.read": {
+      "label": "એડમિન જુઓ",
+      "description": "ચકાસણી લોગ જોઈ શકો છો"
+    },
+    "admin.update": {
+      "label": "એડમિન અપડેટ કરો",
+      "description": "એડમિન વિગતો અપડેટ કરી શકો છો"
+    },
+    "admin.delete": {
+      "label": "એડમિન કાઢી નાંખો",
+      "description": "એડમિન કાઢી શકો છો"
+    },
+    "dealership.assign": {
+      "label": "ડીલરશીપ સોંપો",
+      "description": "વપરાશકર્તાઓને ડીલરશીપ પર સોંપી શકો છો"
+    },
+    "dealership.create": {
+      "label": "ડીલરશીપ બનાવો",
+      "description": "નવી ડીલરશીપ બનાવી શકો છો"
+    },
+    "dealership.delete": {
+      "label": "ડીલરશીપ કાઢી નાખો",
+      "description": "ડીલરશીપ કાઢી શકો છો"
+    },
+    "dealership.update": {
+      "label": "ડીલરશીપ અપડેટ કરો",
+      "description": "ડીલરશીપ વિગતો અપડેટ કરી શકો છો"
+    },
+    "dealership.view": {
+      "label": "ડીલરશીપ જુઓ",
+      "description": "ડીલરશીપ વિગતો જોઈ શકો છો"
+    },
+    "notifications.broadcast": {
+      "label": "સંદેશા પ્રસારિત કરો",
+      "description": "તમામ વપરાશકર્તાઓને સૂચનાઓ મોકલી શકો છો"
+    },
+    "notifications.create": {
+      "label": "સૂચનાઓ બનાવો",
+      "description": "નવી સિસ્ટમ સૂચનાઓ બનાવી શકો છો"
+    },
+    "quotes.create": {
+      "label": "અવતરણ બનાવો",
+      "description": "નવા અવતરણ બનાવી શકો છો"
+    }
+  },
+  "messages": {
+    "userCreated": "વપરાશકર્તા બનાવ્યો",
+    "userUpdated": "વપરાશકર્તા અપડેટ થયો",
+    "userDeleted": "વપરાશકર્તા કાઢી નાખ્યો",
+    "newAdded": "નવો વપરાશકર્તા ઉમેર્યો.",
+    "detailsUpdated": "વપરાશકર્તા વિગતો સફળતાપૂર્વક અપડેટ કરી.",
+    "deletedSuccess": "વપરાશકર્તા કાઢી નાખવામાં આવ્યો.",
+    "confirmDelete": "શું તમે ખરેખર આ વપરાશકર્તાને કાયમી રીતે કાઢી નાખવા માંગો છો?",
+    "confirmSuspend": "શું તમે {{name}} ને સસ્પેન્ડ કરવા માંગો છો?",
+    "confirmActivate": "શું તમે {{name}} ને ફરીથી સક્રિય કરવા માંગો છો?",
+    "activateUser": "વપરાશકર્તા સક્રિય કરો?",
+    "suspendUser": "વપરાશકર્તા સસ્પેન્ડ કરો?",
+    "yesDelete": "હા, કાઢી નાખો",
+    "yesSuspend": "હા, સસ્પેન્ડ કરો",
+    "yesActivate": "હા, સક્રિય કરો",
+    "processed": "પ્રક્રિયા થઈ!",
+    "bulkProcessed": "{{count}} વપરાશકર્તાઓ {{action}} કરવામાં આવ્યા છે.",
+    "resetPasswordTitle": "પાસવર્ડ રીસેટ કરો",
+    "resetPasswordInstr": "<b>{{name}}</b> માટે પાસવર્ડ કેવી રીતે રીસેટ કરવો તે પસંદ કરો:",
+    "autoGenerate": "આપોઆપ જનરેટ કરો",
+    "setManually": "મેન્યુઅલી સેટ કરો",
+    "resetSuccessTitle": "પાસવર્ડ રીસેટ સફળ",
+    "resetSuccessBody": "પાસવર્ડ રીસેટ કરવામાં આવ્યો છે.",
+    "tempPassword": "કામચલાઉ પાસવર્ડ:",
+    "emailSent": "વપરાશકર્તાને ઇમેઇલ પણ મોકલવામાં આવ્યો છે.",
+    "success": "સફળતા"
+  },
+  "validation": {
+    "firstNameRequired": "પ્રથમ નામ જરૂરી છે",
+    "nameInvalid": "નામમાં ફક્ત અક્ષરો, જગ્યાઓ, હાયફન્સ અને એપોસ્ટ્રોફી હોઈ શકે છે",
+    "lastNameRequired": "અટક જરૂરી છે",
+    "emailInvalid": "અમાન્ય ઇમેઇલ સરનામું",
+    "emailRequired": "ઇમેઇલ જરૂરી છે",
+    "phoneRequired": "ફોન નંબર જરૂરી છે",
+    "phoneInvalid": "ફોન નંબર બરાબર 10 અંકનો હોવો જોઈએ",
+    "roleRequired": "ભૂમિકા જરૂરી છે",
+    "statusRequired": "સ્થિતિ જરૂરી છે",
+    "passwordRequired": "પાસવર્ડ જરૂરી છે",
+    "passwordMin": "પાસવર્ડ ઓછામાં ઓછા 6 અક્ષરોનો હોવો જોઈએ",
+    "passwordMatch": "પાસવર્ડ્સ મેળ ખાતા હોવા જોઈએ"
+  }
+}

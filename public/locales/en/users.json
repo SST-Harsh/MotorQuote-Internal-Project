@@ -1,0 +1,189 @@
+{
+  "title": "Global Users",
+  "subtitle": "Monitor and manage all users across the entire platform.",
+  "create": "Create New User",
+  "edit": "Edit User",
+  "view": "View Details",
+  "delete": "Delete User",
+  "suspend": "Suspend User",
+  "activate": "Activate User",
+  "impersonate": "Impersonate User",
+  "resetPassword": "Reset Password",
+  "filters": {
+    "title": "Advanced Filters",
+    "searchByName": "Search by Name",
+    "enterName": "Enter name...",
+    "role": "Role",
+    "status": "Work Status"
+  },
+  "table": {
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "tags": "Tags",
+    "status": "Status",
+    "actions": "Actions",
+    "selected": "{{count}} users selected",
+    "cancelSelection": "Cancel Selection"
+  },
+  "form": {
+    "editTitle": "Edit User",
+    "createTitle": "Create New User",
+    "editSubtitle": "Update details for {{name}}",
+    "createSubtitle": "Fill in the information below to add a new user.",
+    "personalInfo": "Personal Information",
+    "roleAccess": "Role & Access",
+    "security": "Security",
+    "profileImage": "Profile Image",
+    "imageHelp": "Upload a profile picture (JPG, PNG, max 5MB)",
+    "firstName": "First Name",
+    "firstNamePlaceholder": "John",
+    "lastName": "Last Name",
+    "lastNamePlaceholder": "Doe",
+    "email": "Email Address",
+    "emailPlaceholder": "john@example.com",
+    "phone": "Phone Number",
+    "phonePlaceholder": "+1 234 567 8900",
+    "role": "Role",
+    "accountStatus": "Account Status",
+    "selectStatus": "Select Status",
+    "assignedDealership": "Assigned Dealership",
+    "selectDealership": "Select Dealership...",
+    "customPermissions": "Custom Permissions",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "management": "{{category}} Management",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "tags": "Tags",
+    "tagPlaceholder": "Add user tags..."
+  },
+  "permissions": {
+    "categories": {
+      "system": "System",
+      "admin": "Admin",
+      "quotes": "Quotes",
+      "dealer": "Dealer",
+      "staff": "Staff",
+      "user": "User",
+      "role": "Role",
+      "dealership": "Dealership",
+      "notifications": "Notifications",
+      "audit": "Audit",
+      "impersonation": "Impersonation"
+    },
+    "system.configure": {
+      "label": "Configure System",
+      "description": "Can configure system settings"
+    },
+    "system.configuration": {
+      "label": "System Configuration",
+      "description": "Can configure system settings"
+    },
+    "admin.create": {
+      "label": "Create Admin",
+      "description": "Can create new admins"
+    },
+    "admin.read": {
+      "label": "View Admin",
+      "description": "Can view audit logs"
+    },
+    "admin.update": {
+      "label": "Update Admin",
+      "description": "Can update admin details"
+    },
+    "admin.delete": {
+      "label": "Delete Admin",
+      "description": "Can delete admins"
+    },
+    "dealership.assign": {
+      "label": "Assign Dealership",
+      "description": "Can assign users to dealerships"
+    },
+    "dealership.create": {
+      "label": "Create Dealership",
+      "description": "Can create new dealerships"
+    },
+    "dealership.delete": {
+      "label": "Delete Dealership",
+      "description": "Can delete dealerships"
+    },
+    "dealership.update": {
+      "label": "Update Dealership",
+      "description": "Can update dealership details"
+    },
+    "dealership.view": {
+      "label": "View Dealership",
+      "description": "Can view dealership details"
+    },
+    "notifications.broadcast": {
+      "label": "Broadcast Notifications",
+      "description": "Can send broadcast notifications to all users"
+    },
+    "notifications.create": {
+      "label": "Create Notifications",
+      "description": "Can create new system notifications"
+    },
+    "notifications.delete": {
+      "label": "Delete Notifications",
+      "description": "Can delete notifications"
+    },
+    "notifications.update": {
+      "label": "Update Notifications",
+      "description": "Can update notification templates"
+    },
+    "audit.view": {
+      "label": "View Audit Logs",
+      "description": "Can view system audit logs"
+    },
+    "impersonation.start": {
+      "label": "Start Impersonation",
+      "description": "Can impersonate other users"
+    },
+    "quotes.create": {
+      "label": "Create Quotes",
+      "description": "Can create new quotes"
+    }
+  },
+  "messages": {
+    "userCreated": "User Created",
+    "userUpdated": "User Updated",
+    "userDeleted": "User Deleted",
+    "newAdded": "New user added.",
+    "detailsUpdated": "User details updated successfully.",
+    "deletedSuccess": "User deleted.",
+    "confirmDelete": "Permanently delete this user?",
+    "confirmSuspend": "Suspend {{name}}?",
+    "confirmActivate": "Re-activate {{name}}?",
+    "activateUser": "Activate User?",
+    "suspendUser": "Suspend User?",
+    "yesDelete": "Yes, delete",
+    "yesSuspend": "Yes, suspend",
+    "yesActivate": "Yes, Activate",
+    "processed": "Processed!",
+    "bulkProcessed": "{{count}} users have been {{action}}.",
+    "resetPasswordTitle": "Reset Password",
+    "resetPasswordInstr": "Choose how to reset the password for <b>{{name}}</b>:",
+    "autoGenerate": "Auto-Generate",
+    "setManually": "Set Manually",
+    "resetSuccessTitle": "Password Reset Successful",
+    "resetSuccessBody": "The password has been reset.",
+    "tempPassword": "Temporary Password:",
+    "emailSent": "An email has also been sent to the user.",
+    "success": "Success"
+  },
+  "validation": {
+    "firstNameRequired": "First Name is required",
+    "nameInvalid": "Name can only contain letters, spaces, hyphens, and apostrophes",
+    "lastNameRequired": "Last Name is required",
+    "emailInvalid": "Invalid email address",
+    "emailRequired": "Email is required",
+    "phoneRequired": "Phone Number is required",
+    "phoneInvalid": "Phone number must be exactly 10 digits",
+    "roleRequired": "Role is required",
+    "statusRequired": "Status is required",
+    "passwordRequired": "Password is required",
+    "passwordMin": "Password must be at least 6 characters",
+    "passwordMatch": "Passwords must match"
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "title": "Usuarios Globales",
+  "subtitle": "Supervisar y gestionar todos los usuarios en toda la plataforma.",
+  "create": "Crear Nuevo Usuario",
+  "edit": "Editar Usuario",
+  "view": "Ver Detalles",
+  "delete": "Eliminar Usuario",
+  "suspend": "Suspender Usuario",
+  "activate": "Activar Usuario",
+  "impersonate": "Suplantar Usuario",
+  "resetPassword": "Restablecer Contraseña",
+  "filters": {
+    "title": "Filtros Avanzados",
+    "searchByName": "Buscar por Nombre",
+    "enterName": "Ingrese nombre...",
+    "role": "Rol",
+    "status": "Estado Laboral"
+  },
+  "table": {
+    "name": "Nombre",
+    "email": "Correo",
+    "role": "Rol",
+    "status": "Estado",
+    "actions": "Acciones",
+    "selected": "{{count}} usuarios seleccionados",
+    "cancelSelection": "Cancelar Selección"
+  },
+  "form": {
+    "editTitle": "Editar Usuario",
+    "createTitle": "Crear Nuevo Usuario",
+    "editSubtitle": "Actualizar detalles para {{name}}",
+    "createSubtitle": "Complete la información a continuación para agregar un nuevo usuario.",
+    "personalInfo": "Información Personal",
+    "roleAccess": "Rol y Acceso",
+    "security": "Seguridad",
+    "profileImage": "Imagen de Perfil",
+    "imageHelp": "Subir una foto de perfil (JPG, PNG, máx. 5MB)",
+    "firstName": "Nombre",
+    "firstNamePlaceholder": "Juan",
+    "lastName": "Apellido",
+    "lastNamePlaceholder": "Pérez",
+    "email": "Dirección de Correo",
+    "emailPlaceholder": "juan@ejemplo.com",
+    "phone": "Número de Teléfono",
+    "phonePlaceholder": "+1 234 567 8900",
+    "role": "Rol",
+    "accountStatus": "Estado de Cuenta",
+    "selectStatus": "Seleccionar Estado",
+    "assignedDealership": "Concesionario Asignado",
+    "selectDealership": "Seleccionar Concesionario...",
+    "customPermissions": "Permisos Personalizados",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar Contraseña",
+    "management": "Gestión de {{category}}",
+    "selectAll": "Seleccionar Todo",
+    "deselectAll": "Deseleccionar Todo"
+  },
+  "permissions": {
+    "categories": {
+      "system": "Sistema",
+      "admin": "Administrador",
+      "quotes": "Cotizaciones",
+      "dealer": "Distribuidor",
+      "staff": "Personal",
+      "user": "Usuario",
+      "role": "Rol",
+      "dealership": "Concesionario",
+      "notifications": "Notificaciones",
+      "audit": "Auditoría",
+      "impersonation": "Suplantación"
+    },
+    "system.configure": {
+      "label": "Configurar Sistema",
+      "description": "Puede configurar los ajustes del sistema"
+    },
+    "system.configuration": {
+      "label": "Configuración del Sistema",
+      "description": "Puede modificar la configuración del sistema"
+    },
+    "admin.create": {
+      "label": "Crear Admin",
+      "description": "Puede crear nuevos administradores"
+    },
+    "admin.read": {
+      "label": "Ver Admin",
+      "description": "Puede ver registros de auditoría"
+    },
+    "admin.update": {
+      "label": "Actualizar Admin",
+      "description": "Puede actualizar detalles del administrador"
+    },
+    "admin.delete": {
+      "label": "Eliminar Admin",
+      "description": "Puede eliminar administradores"
+    },
+    "dealership.assign": {
+      "label": "Asignar Concesionario",
+      "description": "Puede asignar usuarios a concesionarios"
+    },
+    "dealership.create": {
+      "label": "Crear Concesionario",
+      "description": "Puede crear nuevos concesionarios"
+    },
+    "dealership.delete": {
+      "label": "Eliminar Concesionario",
+      "description": "Puede eliminar concesionarios"
+    },
+    "dealership.update": {
+      "label": "Actualizar Concesionario",
+      "description": "Puede actualizar detalles del concesionario"
+    },
+    "dealership.view": {
+      "label": "Ver Concesionario",
+      "description": "Puede ver detalles del concesionario"
+    },
+    "notifications.broadcast": {
+      "label": "Transmitir Notificaciones",
+      "description": "Puede enviar notificaciones de difusión a todos los usuarios"
+    },
+    "notifications.create": {
+      "label": "Crear Notificaciones",
+      "description": "Puede crear nuevas notificaciones del sistema"
+    },
+    "quotes.create": {
+      "label": "Crear Cotizaciones",
+      "description": "Puede crear nuevas cotizaciones"
+    }
+  },
+  "messages": {
+    "userCreated": "Usuario Creado",
+    "userUpdated": "Usuario Actualizado",
+    "userDeleted": "Usuario Eliminado",
+    "newAdded": "Nuevo usuario agregado.",
+    "detailsUpdated": "Detalles del usuario actualizados exitosamente.",
+    "deletedSuccess": "Usuario eliminado.",
+    "confirmDelete": "¿Eliminar permanentemente a este usuario?",
+    "confirmSuspend": "¿Suspender a {{name}}?",
+    "confirmActivate": "¿Reactivar a {{name}}?",
+    "activateUser": "¿Activar Usuario?",
+    "suspendUser": "¿Suspender Usuario?",
+    "yesDelete": "Sí, eliminar",
+    "yesSuspend": "Sí, suspender",
+    "yesActivate": "Sí, activar",
+    "processed": "¡Procesado!",
+    "bulkProcessed": "{{count}} usuarios han sido {{action}}.",
+    "resetPasswordTitle": "Restablecer Contraseña",
+    "resetPasswordInstr": "Elija cómo restablecer la contraseña para <b>{{name}}</b>:",
+    "autoGenerate": "Generar Automáticamente",
+    "setManually": "Establecer Manualmente",
+    "resetSuccessTitle": "Restablecimiento de Contraseña Exitoso",
+    "resetSuccessBody": "La contraseña ha sido restablecida.",
+    "tempPassword": "Contraseña Temporal:",
+    "emailSent": "También se ha enviado un correo al usuario.",
+    "success": "Éxito"
+  },
+  "validation": {
+    "firstNameRequired": "El nombre es obligatorio",
+    "nameInvalid": "El nombre solo puede contener letras, espacios, guiones y apóstrofes",
+    "lastNameRequired": "El apellido es obligatorio",
+    "emailInvalid": "Dirección de correo inválida",
+    "emailRequired": "El correo es obligatorio",
+    "phoneRequired": "El número de teléfono es obligatorio",
+    "phoneInvalid": "El número de teléfono debe tener exactamente 10 dígitos",
+    "roleRequired": "El rol es obligatorio",
+    "statusRequired": "El estado es obligatorio",
+    "passwordRequired": "La contraseña es obligatoria",
+    "passwordMin": "La contraseña debe tener al menos 6 caracteres",
+    "passwordMatch": "Las contraseñas deben coincidir"
+  }
+}

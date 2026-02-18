@@ -1,0 +1,13 @@
+{
+  "dashboard": "Panel de Control",
+  "quotes": "Cotizaciones",
+  "dealerships": "Concesionarios",
+  "users": "Usuarios",
+  "staff": "Personal",
+  "inventory": "Inventario",
+  "leads": "Prospectos",
+  "support": "Soporte",
+  "settings": "Ajustes",
+  "profile": "Perfil",
+  "logout": "Cerrar Sesión"
+}

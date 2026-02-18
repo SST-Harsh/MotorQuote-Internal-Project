@@ -1,18 +1,12 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import LoginPage from './(auth)/login/page';
 
-export default function RootPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (user) {
-      router.replace('/dashboard');
-    } else {
-      router.replace('/login');
-    }
-  }, [router]);
-
-  return null;
+export default function HomePage() {
+  return (
+    <LoginPage
+      logo="MotorQuote"
+      tagline="Sell Made Simple."
+      companyName="MotorQuote"
+      backgroundImage="/assets/Banner.jpg"
+    />
+  );
 }

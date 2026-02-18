@@ -1,388 +1,427 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import DataTable from '../../common/DataTable';
-import * as yup from 'yup';
 import Loader from '../../common/Loader';
-import GenericFormModal from '../../common/FormModal';
-import DetailViewModal from '../../common/DetailViewModal';
 import Swal from 'sweetalert2';
 import {
-  Plus,
+  Save,
   Shield,
   Users,
   Lock,
-  Eye,
-  Edit2,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  FileText,
-  ChevronDown,
+  Info,
+  CheckCircle2,
+  AlertCircle,
+  Building2,
+  Headset,
   Briefcase,
-  DollarSign,
-  Headphones,
-  Wrench,
+  ShieldAlert,
 } from 'lucide-react';
+import roleService from '../../../services/roleService';
+import PageHeader from '@/components/common/PageHeader';
 
-const roleSchema = yup.object().shape({
-  name: yup.string().required('Role Name is required').min(3),
-  description: yup.string().required('Description is required'),
-  status: yup.string().required('Status is required'),
-  permissions: yup.array().min(1, 'At least one permission is required'),
-  usersCount: yup.number().typeError('Must be a number').integer().min(0, 'Cannot be negative'),
-});
-
-const initialRoles = [
-  {
-    id: 'r-1',
-    name: 'Manager',
-    description: 'Can manage dealerships and quotes',
-    usersCount: 2,
-    status: 'active',
-    lastUpdated: 'Dec 12, 2024',
-  },
-  {
-    id: 'r-2',
-    name: 'Manager',
-    description: 'Can manage dealerships and quotes',
-    usersCount: 5,
-    status: 'active',
-    lastUpdated: 'Dec 15, 2024',
-  },
-  {
-    id: 'r-3',
-    name: 'Seller',
-    description: 'Can create quotes and view assigned leads',
-    usersCount: 12,
-    status: 'active',
-    lastUpdated: 'Dec 20, 2024',
-  },
-  {
-    id: 'r-4',
-    name: 'Support',
-    description: 'Can view tickets and basic details',
-    usersCount: 3,
-    status: 'active',
-    lastUpdated: 'Dec 18, 2024',
-  },
-];
-
-export default function RolesPermissionsView() {
-  // --- STATE ---
-  const [roles, setRoles] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingRole, setEditingRole] = useState(null);
-  const [viewingRole, setViewingRole] = useState(null);
-
-  // --- DATA FETCHING (Local Storage) ---
-  useEffect(() => {
-    const loadRoles = () => {
-      try {
-        const stored = localStorage.getItem('roles_data');
-        if (stored) setRoles(JSON.parse(stored));
-        else setRoles(initialRoles);
-      } catch (error) {
-        console.error('Failed to load roles', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const timer = setTimeout(loadRoles, 600);
-    return () => clearTimeout(timer);
-  }, []);
+export default function RolePermissionView({
+  roles = [],
+  permissions = [],
+  loading = false,
+  onRefresh,
+}) {
+  const [isSaving, setIsSaving] = useState(false);
+  const [activeRole, setActiveRole] = useState(null);
+  const [permissionMatrix, setPermissionMatrix] = useState({});
 
   useEffect(() => {
-    if (roles.length > 0) localStorage.setItem('roles_data', JSON.stringify(roles));
+    if (Array.isArray(roles) && roles.length > 0) {
+      const matrix = {};
+      roles.forEach((role) => {
+        matrix[role.id] = {};
+        if (Array.isArray(role.permissions)) {
+          role.permissions.forEach((p) => {
+            const code = typeof p === 'string' ? p : p.code;
+            matrix[role.id][code] = true;
+          });
+        }
+      });
+      setPermissionMatrix(matrix);
+    }
   }, [roles]);
 
-  if (isLoading) return <Loader />;
-
-  const handleSave = (roleData) => {
-    if (roleData.id && roles.some((r) => r.id === roleData.id)) {
-      // Edit
-      setRoles((prev) => prev.map((r) => (r.id === roleData.id ? { ...r, ...roleData } : r)));
-      Swal.fire('Updated!', 'Role updated successfully.', 'success');
-    } else {
-      // Create
-      const newRole = {
-        ...roleData,
-        id: `r-${Date.now()}`,
-        usersCount: 0,
-        status: 'active',
-        lastUpdated: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: '2-digit',
-          year: 'numeric',
-        }),
-      };
-      setRoles((prev) => [newRole, ...prev]);
-      Swal.fire('Created!', 'New role added successfully.', 'success');
+  useEffect(() => {
+    if (Array.isArray(roles) && roles.length > 0 && !activeRole) {
+      setActiveRole(roles[0].id);
     }
-    setIsAddModalOpen(false);
-    setEditingRole(null);
+  }, [roles, activeRole]);
+
+  if (loading) return <Loader />;
+
+  const handleToggle = (code) => {
+    const role = (Array.isArray(roles) ? roles : []).find((r) => r.id === activeRole);
+    if (role && role.name === 'super_admin') return;
+
+    setPermissionMatrix((prev) => ({
+      ...prev,
+      [activeRole]: {
+        ...prev[activeRole],
+        [code]: !prev[activeRole]?.[code],
+      },
+    }));
   };
 
-  const handleDelete = (id) => {
-    Swal.fire({
-      title: 'Are you sure?',
-      text: 'This might affect users assigned to this role!',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      confirmButtonText: 'Yes, delete it!',
-    }).then((result) => {
-      if (result.isConfirmed) {
-        setRoles((prev) => prev.filter((r) => r.id !== id));
-        Swal.fire('Deleted!', 'Role has been removed.', 'success');
-      }
-    });
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const currentRole = (Array.isArray(roles) ? roles : []).find((r) => r.id === activeRole);
+      if (!currentRole) return;
+      const activePermsForRole = permissionMatrix[activeRole] || {};
+      const permissionIds = (Array.isArray(permissions) ? permissions : [])
+        .filter((p) => activePermsForRole[p.code])
+        .map((p) => p.id);
+
+      await roleService.updateRole(activeRole, {
+        name: currentRole.name,
+        description: currentRole.description,
+        permission_ids: permissionIds,
+      });
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Saved',
+        text: 'Permissions updated successfully.',
+        timer: 1500,
+        showConfirmButton: false,
+      });
+      onRefresh?.();
+    } catch (error) {
+      console.error('Save error', error);
+      Swal.fire('Error', 'Failed to save permissions', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleStatusChange = (id, newStatus) => {
-    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
-  };
-  const handlePermissionsChange = (id, newPermissions) => {
-    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, permissions: newPermissions } : r)));
+  const handleReset = () => {
+    if (!activeRole) return;
+    setPermissionMatrix((prev) => ({
+      ...prev,
+      [activeRole]: {},
+    }));
   };
 
-  const getRoleIcon = (roleName) => {
-    const name = roleName?.toLowerCase() || '';
-    if (name.includes('manager')) return <Briefcase size={20} />;
-    if (name.includes('seller')) return <DollarSign size={20} />;
-    if (name.includes('support')) return <Headphones size={20} />;
-    return <Shield size={20} />;
+  const getGroupedPermissions = () => {
+    const groups = {};
+    if (Array.isArray(permissions)) {
+      permissions.forEach((p) => {
+        const part = p.code.split('.')[0];
+        const category = part.charAt(0).toUpperCase() + part.slice(1);
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(p);
+      });
+    }
+
+    return Object.entries(groups).map(([cat, items]) => ({
+      category: cat,
+      description: `Manage ${cat.toLowerCase()}`,
+      items: (Array.isArray(items) ? items : []).map((i) => ({
+        key: i.code,
+        label: i.name,
+        desc: i.description,
+      })),
+    }));
   };
+
+  const groupedPermissions = getGroupedPermissions();
+  const currentRoleObj = (Array.isArray(roles) ? roles : []).find((r) => r.id === activeRole);
+  const isSuperAdmin = currentRoleObj?.name === 'super_admin';
+
+  // Helper for dynamic classes (Lifted up)
+  const getThemeForRole = (roleName) => {
+    const name = (roleName || '').toLowerCase();
+    let colorTheme = 'gray';
+    if (name.includes('admin')) colorTheme = 'purple';
+    if (name.includes('super')) colorTheme = 'rose';
+    if (name.includes('dealer')) colorTheme = 'blue';
+    if (name.includes('support')) colorTheme = 'emerald';
+    if (name.includes('sales')) colorTheme = 'amber';
+
+    const themes = {
+      purple: {
+        bg: 'bg-purple-50',
+        text: 'text-purple-600',
+        border: 'border-purple-200',
+        activeRing: 'ring-purple-500',
+        activeBorder: 'border-purple-500',
+        toggle: 'bg-purple-600',
+      },
+      rose: {
+        bg: 'bg-rose-50',
+        text: 'text-rose-600',
+        border: 'border-rose-200',
+        activeRing: 'ring-rose-500',
+        activeBorder: 'border-rose-500',
+        toggle: 'bg-rose-600',
+      },
+      blue: {
+        bg: 'bg-blue-50',
+        text: 'text-blue-600',
+        border: 'border-blue-200',
+        activeRing: 'ring-blue-500',
+        activeBorder: 'border-blue-500',
+        toggle: 'bg-blue-600',
+      },
+      emerald: {
+        bg: 'bg-emerald-50',
+        text: 'text-emerald-600',
+        border: 'border-emerald-200',
+        activeRing: 'ring-emerald-500',
+        activeBorder: 'border-emerald-500',
+        toggle: 'bg-emerald-600',
+      },
+      amber: {
+        bg: 'bg-amber-50',
+        text: 'text-amber-600',
+        border: 'border-amber-200',
+        activeRing: 'ring-amber-500',
+        activeBorder: 'border-amber-500',
+        toggle: 'bg-amber-600',
+      },
+      gray: {
+        bg: 'bg-gray-50',
+        text: 'text-gray-600',
+        border: 'border-gray-200',
+        activeRing: 'ring-gray-500',
+        activeBorder: 'border-gray-500',
+        toggle: 'bg-gray-600',
+      },
+    };
+    return themes[colorTheme] || themes.gray;
+  };
+
+  const activeTheme = getThemeForRole(currentRoleObj?.name);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">Roles & Permissions</h1>
-          <p className="text-[rgb(var(--color-text))] text-sm">
-            Manage access levels and system capabilities
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setEditingRole(null);
-            setIsAddModalOpen(true);
-          }}
-          className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-lg shadow-[rgb(var(--color-primary)/0.3)]"
-        >
-          <Plus size={18} />
-          <span>Add Role</span>
-        </button>
+    <div className="space-y-8 pb-20 animate-fade-in">
+      <PageHeader
+        title="Access Control"
+        subtitle="Define capabilities for each system role."
+        actions={
+          <div className="flex gap-3">
+            <button
+              onClick={handleReset}
+              disabled={isSuperAdmin}
+              className="px-4 py-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] rounded-xl transition-colors disabled:opacity-50"
+            >
+              Reset to Default
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving || isSuperAdmin}
+              className={`flex items-center gap-2 text-white px-6 py-2 rounded-xl transition-all shadow-lg disabled:opacity-70 bg-[rgb(var(--color-primary))]`}
+            >
+              {isSaving ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save size={18} />
+              )}
+              <span>Save Changes</span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {(Array.isArray(roles) ? roles : []).map((role) => {
+          const isActive = activeRole === role.id;
+
+          let RoleIcon = Users;
+          let colorTheme = 'gray';
+
+          const name = (role.name || '').toLowerCase();
+          if (name.includes('admin')) {
+            RoleIcon = Shield;
+            colorTheme = 'purple';
+          }
+          if (name.includes('super')) {
+            RoleIcon = ShieldAlert;
+            colorTheme = 'rose';
+          }
+          if (name.includes('dealer')) {
+            RoleIcon = Building2;
+            colorTheme = 'blue';
+          }
+          if (name.includes('support')) {
+            RoleIcon = Headset;
+            colorTheme = 'emerald';
+          }
+          if (name.includes('sales')) {
+            RoleIcon = Briefcase;
+            colorTheme = 'amber';
+          }
+
+          const activeCount = Object.values(permissionMatrix[role.id] || {}).filter(Boolean).length;
+
+          const getThemeClasses = () => {
+            const themes = {
+              purple: {
+                bg: 'bg-purple-50',
+                text: 'text-purple-600',
+                border: 'border-purple-200',
+                activeRing: 'ring-purple-500',
+                activeBorder: 'border-purple-500',
+              },
+              rose: {
+                bg: 'bg-rose-50',
+                text: 'text-rose-600',
+                border: 'border-rose-200',
+                activeRing: 'ring-rose-500',
+                activeBorder: 'border-rose-500',
+              },
+              blue: {
+                bg: 'bg-blue-50',
+                text: 'text-blue-600',
+                border: 'border-blue-200',
+                activeRing: 'ring-blue-500',
+                activeBorder: 'border-blue-500',
+              },
+              emerald: {
+                bg: 'bg-emerald-50',
+                text: 'text-emerald-600',
+                border: 'border-emerald-200',
+                activeRing: 'ring-emerald-500',
+                activeBorder: 'border-emerald-500',
+              },
+              amber: {
+                bg: 'bg-amber-50',
+                text: 'text-amber-600',
+                border: 'border-amber-200',
+                activeRing: 'ring-amber-500',
+                activeBorder: 'border-amber-500',
+              },
+              gray: {
+                bg: 'bg-gray-50',
+                text: 'text-gray-600',
+                border: 'border-gray-200',
+                activeRing: 'ring-gray-500',
+                activeBorder: 'border-gray-500',
+              },
+            };
+            return themes[colorTheme] || themes.gray;
+          };
+
+          const theme = getThemeClasses();
+
+          return (
+            <button
+              key={role.id}
+              onClick={() => setActiveRole(role.id)}
+              className={`
+                                relative p-4 rounded-2xl border text-left transition-all duration-200 group
+                                ${
+                                  isActive
+                                    ? `bg-[rgb(var(--color-surface))] ${theme.activeBorder} shadow-md ring-1 ${theme.activeRing}`
+                                    : `bg-[rgb(var(--color-surface))] border-[rgb(var(--color-border))] hover:border-[rgb(var(--color-text-muted))] hover:shadow-sm`
+                                }
+                            `}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className={`p-2 rounded-lg ${theme.bg} ${theme.text} transition-colors`}>
+                  <RoleIcon size={20} />
+                </div>
+                {isActive && <CheckCircle2 size={18} className={theme.text} />}
+              </div>
+              <h3
+                className={`font-bold ${isActive ? 'text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] group-hover:text-[rgb(var(--color-text))]'}`}
+              >
+                {role.name.charAt(0).toUpperCase() + role.name.slice(1).replace('_', ' ')}
+              </h3>
+              <p className="text-xs text-[rgb(var(--color-text-muted))] mt-1">
+                {role.name === 'super_admin'
+                  ? 'Full System Access'
+                  : `${activeCount} Active Permissions`}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Table */}
-      <DataTable
-        data={roles}
-        searchKeys={['name', 'description']}
-        filterOptions={[
-          {
-            key: 'status',
-            label: 'Status',
-            options: [
-              { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Inactive' },
-            ],
-          },
-        ]}
-        columns={[
-          {
-            header: 'Role Name',
-            sortable: true,
-            accessor: (role) => (
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-[rgb(var(--color-primary))/0.1] text-[rgb(var(--color-primary))]">
-                  {getRoleIcon(role.name)}
-                </div>
-                <div>
-                  <p className="font-semibold text-sm text-[rgb(var(--color-text))]">{role.name}</p>
-                </div>
-              </div>
-            ),
-          },
-          {
-            header: 'Description',
-            accessor: 'description',
-            className: 'text-sm text-[rgb(var(--color-text))]',
-          },
-          {
-            header: 'Users',
-            accessor: (role) => (
-              <div className="flex items-center gap-2 text-sm text-[rgb(var(--color-text))]">
-                <Users size={16} className="text-[rgb(var(--color-text))]" />
-                {role.usersCount}
-              </div>
-            ),
-          },
-          {
-            header: 'Last Updated',
-            accessor: 'lastUpdated',
-            sortable: true,
-            className: 'text-sm text-[rgb(var(--color-text))]',
-          },
-          {
-            header: 'Status',
-            accessor: (role) => {
-              const statusColors = {
-                active: 'bg-green-500/10 text-green-500 border-green-500/20',
-                inactive: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-              };
-              return (
-                <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                  <select
-                    value={role.status}
-                    onChange={(e) => handleStatusChange(role.id, e.target.value)}
-                    className={`appearance-none pl-8 pr-8 py-1 rounded-full text-xs font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[rgb(var(--color-primary))] ${statusColors[role.status] || statusColors.active}`}
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                    {role.status === 'active' ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                  </div>
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
-                    <ChevronDown size={12} />
-                  </div>
-                </div>
-              );
-            },
-            className: 'text-center',
-          },
-          {
-            header: 'Actions',
-            accessor: (role) => (
-              <div className="flex items-center justify-center gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setViewingRole(role);
-                  }}
-                  className="p-1.5 text-[rgb(var(--color-text))] hover:text-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary)/0.1)] rounded-lg transition-colors"
-                  title="View Details"
-                >
-                  <Eye size={16} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingRole(role);
-                    setIsAddModalOpen(true);
-                  }}
-                  className="p-1.5 text-[rgb(var(--color-text))] hover:text-[rgb(var(--color-info))] hover:bg-[rgb(var(--color-info)/0.1)] rounded-lg transition-colors"
-                  title="Edit Role"
-                >
-                  <Edit2 size={16} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(role.id);
-                  }}
-                  className="p-1.5 text-[rgb(var(--color-text))] hover:text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error)/0.1)] rounded-lg transition-colors"
-                  title="Delete Role"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ),
-            className: 'text-center',
-          },
-        ]}
-      />
+      <div className="space-y-6">
+        {isSuperAdmin && (
+          <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3">
+            <Lock className="text-red-600 mt-0.5" size={18} />
+            <div>
+              <h4 className="text-sm font-bold text-red-800">System Locked</h4>
+              <p className="text-xs text-red-700 mt-1">
+                Super Admin permissions are hard-coded for security and cannot be modified.
+              </p>
+            </div>
+          </div>
+        )}
 
-      {/* Modals */}
-      <GenericFormModal
-        isOpen={isAddModalOpen}
-        onClose={() => {
-          setIsAddModalOpen(false);
-          setEditingRole(null);
-        }}
-        onSave={handleSave}
-        title={editingRole ? 'Edit Role' : 'Create New Role'}
-        initialData={editingRole}
-        validationSchema={roleSchema}
-        fields={[
-          {
-            name: 'name',
-            label: 'Role Name',
-            placeholder: 'e.g. Manager',
-            icon: Shield,
-            type: 'select',
-            options: [
-              { value: 'Manager', label: 'Manager' },
-              { value: 'Seller', label: 'Seller' },
-              { value: 'Support', label: 'Support' },
-            ],
-          },
-          {
-            name: 'description',
-            label: 'Description',
-            placeholder: 'Access level description...',
-            icon: FileText,
-            type: 'textarea',
-          },
-          {
-            name: 'status',
-            label: 'Status',
-            placeholder: 'Select status',
-            icon: Shield,
-            type: 'select',
-            options: [
-              { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Inactive' },
-            ],
-          },
-          {
-            name: 'permissions',
-            label: 'Permissions',
-            type: 'checkbox-group',
-            options: [
-              { value: 'all', label: 'All Access' },
-              { value: 'read', label: 'View Only' },
-              { value: 'write', label: 'Edit/Write' },
-              { value: 'delete', label: 'Delete Capabilities' },
-            ],
-          },
-        ]}
-      />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {(Array.isArray(groupedPermissions) ? groupedPermissions : []).map((category, idx) => (
+            <div
+              key={idx}
+              className="bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl overflow-hidden shadow-sm"
+            >
+              <div className="px-6 py-4 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))/0.5]">
+                <h3 className="font-bold text-[rgb(var(--color-text))]">{category.category}</h3>
+                <p className="text-xs text-[rgb(var(--color-text-muted))]">
+                  {category.description}
+                </p>
+              </div>
 
-      <DetailViewModal
-        isOpen={!!viewingRole}
-        onClose={() => setViewingRole(null)}
-        data={viewingRole}
-        title="Role Details"
-        onEdit={(r) => {
-          setViewingRole(null);
-          setEditingRole(r);
-          setIsAddModalOpen(true);
-        }}
-        onDelete={handleDelete}
-        sections={[
-          {
-            title: 'Role Info',
-            icon: Shield,
-            fields: [
-              { label: 'Role Name', key: 'name' },
-              { label: 'Status', key: 'status' },
-              { label: 'Last Updated', key: 'lastUpdated' },
-            ],
-          },
-          {
-            title: 'Configuration',
-            icon: Lock,
-            fields: [
-              { label: 'Description', key: 'description' },
-              { label: 'Assigned Users', key: 'usersCount' },
-            ],
-          },
-        ]}
-      />
+              <div className="divide-y divide-[rgb(var(--color-border))]">
+                {(Array.isArray(category.items) ? category.items : []).map((item) => {
+                  const isLocked = isSuperAdmin;
+                  const isEnabled = permissionMatrix[activeRole]?.[item.key];
+
+                  return (
+                    <div
+                      key={item.key}
+                      className="px-6 py-4 flex items-center justify-between hover:bg-[rgb(var(--color-background))/0.3] transition-colors"
+                    >
+                      <div className="pr-4">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-sm font-medium ${isEnabled ? 'text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))]'}`}
+                          >
+                            {item.label}
+                          </span>
+                          {isLocked && (
+                            <Lock
+                              size={12}
+                              className="text-[rgb(var(--color-text-muted))] opacity-50"
+                            />
+                          )}
+                        </div>
+                        <p className="text-xs text-[rgb(var(--color-text-muted))] mt-0.5">
+                          {item.desc}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleToggle(item.key)}
+                        disabled={isLocked}
+                        className={`
+                                                    relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+                                                    ${isEnabled ? activeTheme.toggle : 'bg-[rgb(var(--color-border))]'}
+                                                    ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
+                                                `}
+                      >
+                        <span className="sr-only">Use setting</span>
+                        <span
+                          aria-hidden="true"
+                          className={`
+                                                        pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out
+                                                        ${isEnabled ? 'translate-x-5' : 'translate-x-0'}
+                                                    `}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
