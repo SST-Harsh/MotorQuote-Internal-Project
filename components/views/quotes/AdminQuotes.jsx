@@ -131,7 +131,7 @@ export default function AdminQuotes() {
   }, []);
 
   const filteredQuotes = React.useMemo(() => {
-    let list = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
+    let list = Array.isArray(quotesData) ? quotesData : quotesData.items || quotesData.quotes || [];
 
     // Apply filters client-side
     if (filters.status) {
@@ -190,21 +190,21 @@ export default function AdminQuotes() {
 
     // Map and normalize for the table
     return list.map((q) => {
-      const vehicle_info = q.vehicle_info || q.vehicle_details || {};
+      const vehicle = q.vehicle_details || q.vehicle_info || {};
       const dealershipName =
         q.dealership?.name ||
         (isAdmin
           ? dealershipOptions.find((d) => String(d.value) === String(q.dealership_id))?.label
           : null) ||
         'Unknown';
-      const amountVal = parseNumeric(q.amount || q.quote_amount || q.price || 0);
+      const amountVal = parseNumeric(q.quote_amount || q.amount || q.price || 0);
 
       return {
         ...q,
         id: q.id,
         customer_name: q.customer_name || q.clientName || 'Unknown',
-        vehicle_info: vehicle_info,
-        amount: amountVal,
+        vehicle_details: vehicle,
+        quote_amount: amountVal,
         status: (q.status || 'pending').toLowerCase(),
         created_at: q.created_at || q.date || new Date().toISOString(),
         date: new Date(q.created_at || q.date || Date.now()).toLocaleDateString('en-GB', {
@@ -212,12 +212,9 @@ export default function AdminQuotes() {
           month: 'short',
           year: 'numeric',
         }),
-        clientName: q.customer_name || q.clientName || 'Unknown',
-        vehicle:
-          `${vehicle_info.year || ''} ${vehicle_info.make || ''} ${vehicle_info.model || ''}`.trim() ||
-          'N/A',
-        price: amountVal,
-        dealershipName: dealershipName,
+        vehicle_summary:
+          `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'N/A',
+        dealership_name: dealershipName,
       };
     });
   }, [quotesData, isAdmin, dealershipOptions, filters]);
@@ -393,203 +390,194 @@ export default function AdminQuotes() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <PageHeader
-        title="Quote Management"
-        subtitle="Manage your active customer quotes and sales pipeline"
-        actions={
-          <button
-            onClick={() => router.push('/quotes/new')}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-xl font-semibold shadow-lg shadow-[rgb(var(--color-primary))/0.3] hover:shadow-xl hover:-translate-y-0.5 transition-all"
-          >
-            <Plus size={20} />
-            <span>Create New Quote</span>
-          </button>
-        }
-        stats={[
-          <StatCard
-            key="total-value"
-            title="Total Value"
-            value={`$${Number(stats.totalValue || 0).toLocaleString()}`}
-            icon={<DollarSign size={20} />}
-            accent="rgb(var(--color-success))"
-            helperText="Current Pipeline"
-          />,
-          <StatCard
-            key="pending"
-            title="Pending"
-            value={stats.pendingCount || 0}
-            icon={<Clock size={20} />}
-            accent="rgb(var(--color-warning))"
-            helperText="Requires Action"
-          />,
-          <StatCard
-            key="approved"
-            title="Approved"
-            value={stats.approvedCount || 0}
-            icon={<CheckCircle size={20} />}
-            accent="rgb(var(--color-primary))"
-            helperText="Ready for Sale"
-          />,
-          <StatCard
-            key="conversion"
-            title="Conversion"
-            value={`${stats.conversionRate || 0}%`}
-            icon={<FileText size={20} />}
-            accent="rgb(var(--color-info))"
-            helperText="Success Rate"
-          />,
-        ]}
-      />
-
-      <div className="min-h-0 flex flex-col">
+    <div className="space-y-6 animate-fade-in p-4 pb-20">
+      {/* Header Section - Dashboard Style */}
+      <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-2">
         <div>
-          {isLoading ? (
-            <div className="p-6">
-              <SkeletonTable rows={10} />
-            </div>
-          ) : (
-            <DataTable
-              data={filteredQuotes}
-              selectedIds={selectedQuoteIds}
-              onSelectionChange={setSelectedQuoteIds}
-              searchKeys={['clientName', 'vehicle', 'dealershipName', 'amount']}
-              sortKeys={['date', 'price', 'status']}
-              onFilterClick={() => setIsFilterOpen(true)}
-              onClearFilters={clearFilters}
-              showClearFilter={
-                filters.status !== '' ||
-                (filters.dateStart !== null && filters.dateStart !== '') ||
-                (filters.dateEnd !== null && filters.dateEnd !== '') ||
-                filters.minPrice !== '' ||
-                filters.maxPrice !== '' ||
-                (filters.tags && filters.tags.length > 0) ||
-                (filters.dealershipId && filters.dealershipId !== (user?.dealership_id || ''))
-              }
-              columns={[
-                {
-                  header: 'Dealership',
-                  sortable: true,
-                  sortKey: 'dealershipName',
-                  accessor: (row) => (
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-[rgb(var(--color-background))] rounded-lg border border-[rgb(var(--color-border))] text-[rgb(var(--color-text-muted))]">
-                        <Building2 size={16} />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-[rgb(var(--color-text))] text-sm">
-                          {row.dealershipName}
-                        </span>
-                        <span className="text-[10px] text-[rgb(var(--color-text-muted))] uppercase tracking-wide bg-[rgb(var(--color-background))] px-1.5 py-0.5 rounded-md w-fit mt-0.5">
-                          ID: {row.dealershipId ? row.dealershipId.slice(-4) : '...'}
-                        </span>
-                      </div>
-                    </div>
-                  ),
-                },
-                {
-                  header: 'Client',
-                  type: 'avatar',
-                  sortable: true,
-                  sortKey: 'customer_name',
-                  config: (row) => ({
-                    name: row.customer_name,
-                    subtext: row.created_at ? formatDate(row.created_at) : 'N/A',
-                  }),
-                },
-                {
-                  header: 'Vehicle',
-                  accessor: (row) =>
-                    row.vehicle_info
-                      ? `${row.vehicle_info.year} ${row.vehicle_info.make} ${row.vehicle_info.model}`
-                      : 'N/A',
-                  sortable: true,
-                  sortKey: 'vehicle_info.make',
-                  className: 'text-sm',
-                },
-                {
-                  header: 'Amount',
-                  type: 'currency',
-                  sortable: true,
-                  sortKey: 'amount',
-                  accessor: 'amount',
-                },
-                {
-                  header: 'Tags',
-                  accessor: (row) => <TagList tags={row.tags} limit={2} />,
-                  className: 'min-w-[120px]',
-                },
-                {
-                  header: 'Status',
-                  type: 'badge',
-                  sortable: true,
-                  sortKey: 'status',
-                  accessor: 'status',
-                  config: {
-                    green: ['approved', 'sold'],
-                    orange: ['pending'],
-                    red: ['rejected'],
-                    gray: ['archived'],
-                  },
-                },
-                {
-                  header: 'Actions',
-                  className: 'text-center',
-                  headerClassName: 'text-center',
-                  accessor: (row) => (
-                    <div className="relative flex justify-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const domRect = e.currentTarget.getBoundingClientRect();
-                          const rect = {
-                            top: domRect.top,
-                            bottom: domRect.bottom,
-                            left: domRect.left,
-                            right: domRect.right,
-                            width: domRect.width,
-                            height: domRect.height,
-                            mouseX: e.clientX,
-                            mouseY: e.clientY,
-                          };
-
-                          let position = { top: rect.bottom + 4, left: rect.right - 192 };
-
-                          const spaceBelow = window.innerHeight - rect.bottom;
-                          if (spaceBelow < 250) {
-                            const bottom = window.innerHeight - rect.top + 4;
-                            position = { bottom, left: rect.right - 192 };
-                          }
-
-                          if (openActionMenu?.id === row.id) {
-                            setOpenActionMenu(null);
-                          } else {
-                            setOpenActionMenu({
-                              id: row.id,
-                              position,
-                              align: 'end',
-                            });
-                          }
-                        }}
-                        className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))]'}`}
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                    </div>
-                  ),
-                },
-              ]}
-              itemsPerPage={preferences.items_per_page || 10}
-            />
-          )}
+          <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">
+            Quote <span className="text-[#6a7150cb] font-bold">Management</span>
+          </h1>
+          <p className="text-[rgb(var(--color-text-muted))] text-sm mt-1">
+            Manage your active customer quotes and sales pipeline
+          </p>
         </div>
-      </div>
 
+        <button
+          onClick={() => router.push('/quotes/new')}
+          className="flex items-center gap-2 px-6 py-2.5 bg-[#CCFF00] text-black rounded-xl font-bold shadow-sm hover:shadow-md transition-all active:scale-95"
+        >
+          <Plus size={20} />
+          <span>Create New Quote</span>
+        </button>
+      </div>
+      {/* Stats Grid - Premium Layout */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard
+          key="total-value"
+          title="Total Value"
+          value={`$${Number(stats.totalValue || 0).toLocaleString()}`}
+          icon={<DollarSign size={20} />}
+          accent="#CCFF00"
+          helperText="Current Pipeline"
+        />
+        <StatCard
+          key="pending"
+          title="Pending Items"
+          value={stats.pendingCount || 0}
+          icon={<Clock size={20} />}
+          accent="#8b5cf6"
+          helperText="Requires Action"
+        />
+        <StatCard
+          key="approved"
+          title="Approved Quotes"
+          value={stats.approvedCount || 0}
+          icon={<CheckCircle size={20} />}
+          accent="#CCFF00"
+          helperText="Ready for Sale"
+        />
+        <StatCard
+          key="conversion"
+          title="Conversion Rate"
+          value={`${stats.conversionRate || 0}%`}
+          icon={<FileText size={20} />}
+          accent="#ec4899"
+          helperText="Success Rate"
+        />
+      </div>
+      {/* Table Container - rounded-3xl */}
+      <div className="bg-[rgb(var(--color-surface))] rounded-3xl shadow-sm border border-[rgb(var(--color-border))] overflow-hidden">
+        {isLoading ? (
+          <div className="p-6">
+            <SkeletonTable rows={10} />
+          </div>
+        ) : (
+          <DataTable
+            data={filteredQuotes}
+            selectedIds={selectedQuoteIds}
+            onSelectionChange={setSelectedQuoteIds}
+            searchKeys={['customer_name', 'vehicle_summary', 'dealership_name', 'quote_amount']}
+            sortKeys={['date', 'quote_amount', 'status']}
+            onFilterClick={() => setIsFilterOpen(true)}
+            onClearFilters={clearFilters}
+            showClearFilter={
+              filters.status !== '' ||
+              (filters.dateStart !== null && filters.dateStart !== '') ||
+              (filters.dateEnd !== null && filters.dateEnd !== '') ||
+              filters.minPrice !== '' ||
+              filters.maxPrice !== '' ||
+              (filters.tags && filters.tags.length > 0) ||
+              (filters.dealershipId && filters.dealershipId !== (user?.dealership_id || ''))
+            }
+            columns={[
+              {
+                header: 'Dealership',
+                sortable: true,
+                sortKey: 'dealership_name',
+                accessor: (row) => (
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-[rgb(var(--color-background))] rounded-lg border border-[rgb(var(--color-border))] text-[rgb(var(--color-text-muted))]">
+                      <Building2 size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-[rgb(var(--color-text))] text-sm">
+                        {row.dealership_name}
+                      </span>
+                      <span className="text-[10px] text-[rgb(var(--color-text-muted))] uppercase tracking-wide bg-[rgb(var(--color-background))] px-1.5 py-0.5 rounded-md w-fit mt-0.5">
+                        ID: {String(row.dealership_id || row.id).slice(-4)}
+                      </span>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                header: 'Client',
+                type: 'avatar',
+                sortable: true,
+                sortKey: 'customer_name',
+                config: (row) => ({
+                  name: row.customer_name,
+                  subtext: row.created_at ? formatDate(row.created_at) : 'N/A',
+                }),
+              },
+              {
+                header: 'Vehicle',
+                accessor: 'vehicle_summary',
+                sortable: true,
+                sortKey: 'vehicle_summary',
+                className: 'text-sm',
+              },
+              {
+                header: 'Amount',
+                type: 'currency',
+                sortable: true,
+                sortKey: 'quote_amount',
+                accessor: 'quote_amount',
+              },
+              {
+                header: 'Tags',
+                accessor: (row) => <TagList tags={row.tags} limit={2} />,
+                className: 'min-w-[120px]',
+              },
+              {
+                header: 'Status',
+                type: 'badge',
+                sortable: true,
+                sortKey: 'status',
+                accessor: 'status',
+                config: {
+                  green: ['approved', 'sold'],
+                  orange: ['pending'],
+                  red: ['rejected'],
+                  gray: ['archived'],
+                },
+              },
+              {
+                header: 'Actions',
+                className: 'text-center',
+                headerClassName: 'text-center',
+                accessor: (row) => (
+                  <div className="relative flex justify-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const domRect = e.currentTarget.getBoundingClientRect();
+                        const triggerRect = {
+                          top: domRect.top,
+                          bottom: domRect.bottom,
+                          left: domRect.left,
+                          right: domRect.right,
+                          width: domRect.width,
+                          height: domRect.height,
+                        };
+
+                        if (openActionMenu?.id === row.id) {
+                          setOpenActionMenu(null);
+                        } else {
+                          setOpenActionMenu({
+                            id: row.id,
+                            triggerRect,
+                            align: 'end',
+                          });
+                        }
+                      }}
+                      className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))]'}`}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+            itemsPerPage={preferences.items_per_page || 10}
+          />
+        )}
+      </div>
       {openActionMenu && (
         <ActionMenuPortal
           isOpen={!!openActionMenu}
           onClose={() => setOpenActionMenu(null)}
-          position={openActionMenu.position}
+          triggerRect={openActionMenu.triggerRect}
           align={openActionMenu.align}
         >
           {(() => {
@@ -670,7 +658,6 @@ export default function AdminQuotes() {
           })()}
         </ActionMenuPortal>
       )}
-
       <FilterDrawer
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
@@ -804,7 +791,6 @@ export default function AdminQuotes() {
           </div>
         </div>
       </FilterDrawer>
-
       {/* Bulk Actions Bar */}
       {selectedQuoteIds.length > 0 && (
         <div className="fixed bottom-0 left-0 lg:left-[280px] right-0 bg-[rgb(var(--color-surface))] border-t border-[rgb(var(--color-border))] p-4 md:p-6 z-50 shadow-xl">
@@ -843,6 +829,7 @@ export default function AdminQuotes() {
           </div>
         </div>
       )}
+      )
     </div>
   );
 }

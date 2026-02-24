@@ -33,6 +33,7 @@ export default function DashboardPage() {
     recentActivity: [],
   });
 
+  /*
   const fetchData = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
@@ -342,6 +343,63 @@ export default function DashboardPage() {
       mounted = false;
     };
   }, [fetchData, user]);
+  */
+
+  // MOCK DATA FOR DESIGN REFERENCE
+  useEffect(() => {
+    setDashboardData({
+      stats: {
+        totalQuotes: 1250,
+        pendingApprovals: 45,
+        totalConversions: 850,
+        conversionRate: 68,
+        totalRevenue: 1250000,
+        monthlyGrowth: 12.5,
+        quotes: 1250,
+        revenue: 1250000,
+        users: 156,
+        dealers: 42,
+        support: { open_tickets: 5, total_tickets: 120, resolved_tickets: 115 },
+        quoteStats: { total_quotes: 1250, monthly_growth: 12.5 },
+        revenueStats: { total_revenue: 1250000, revenue_growth: 8.4 },
+        userStats: { active_users: 156, total_users: 200 },
+      },
+      recentActivity: [
+        {
+          user_name: 'John Doe',
+          action: 'created a quote',
+          description: 'Quote #1234 generated',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          user_name: 'Jane Smith',
+          action: 'logged in',
+          description: 'System login',
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      // Add specific mock data for new charts if needed by AdminDashboard
+      salesBySegment: [
+        { name: 'Mon', value: 300 },
+        { name: 'Tue', value: 450 },
+        { name: 'Wed', value: 398 },
+        { name: 'Thu', value: 500 },
+        { name: 'Fri', value: 420 },
+        { name: 'Sat', value: 550 },
+        { name: 'Sun', value: 600 },
+      ],
+      inventoryBySegment: [
+        { name: 'Mon', value: 200 },
+        { name: 'Tue', value: 250 },
+        { name: 'Wed', value: 150 }, // 15% drop shape
+        { name: 'Thu', value: 300 },
+        { name: 'Fri', value: 280 },
+        { name: 'Sat', value: 320 },
+        { name: 'Sun', value: 350 },
+      ],
+    });
+    setIsLoading(false);
+  }, []);
 
   if (!user) {
     return <div className="p-8">Please log in to view the dashboard.</div>;

@@ -6,7 +6,7 @@ const auditService = {
   // Get audit logs with filters
   getAuditLogs: async (params = {}) => {
     try {
-      const response = await api.get('/audit/logs', { params });
+      const response = await api.get('/audit-logs', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching audit logs:', error);
@@ -17,7 +17,7 @@ const auditService = {
   // 6.2 Get Audit Log by ID
   getAuditLogById: async (id) => {
     try {
-      const response = await api.get(`/audit/logs/${id}`);
+      const response = await api.get(`/audit-logs/${id}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching audit log by ID:', error);
@@ -28,7 +28,7 @@ const auditService = {
   // Get complete history of a specific resource
   getResourceHistory: async (resource, resourceId, params = {}) => {
     try {
-      const response = await api.get(`/audit/resource/${resource}/${resourceId}`, { params });
+      const response = await api.get(`/audit-logs/resource/${resource}/${resourceId}`, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching resource history:', error);
@@ -39,7 +39,7 @@ const auditService = {
   // Get activity summary for a user
   getUserActivity: async (userId, params = {}) => {
     try {
-      const response = await api.get(`/audit/users/${userId}/activities`, { params });
+      const response = await api.get(`/audit-logs/user/${userId}`, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching user activity:', error);
@@ -50,7 +50,7 @@ const auditService = {
   // Get failed actions
   getFailedActions: async (params = {}) => {
     try {
-      const response = await api.get('/audit/failed-actions', { params });
+      const response = await api.get('/audit-logs/failed-actions', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching failed actions:', error);
@@ -61,7 +61,7 @@ const auditService = {
   // Get aggregated audit stats
   getAuditStats: async (params = {}) => {
     try {
-      const response = await api.get('/audit/stats', { params });
+      const response = await api.get('/audit-logs/statistics', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching audit stats:', error);
@@ -92,7 +92,7 @@ const auditService = {
 
   getErrorLogs: async (params = {}) => {
     try {
-      const response = await api.get('/audit/errors', { params });
+      const response = await api.get('/audit-logs/errors', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching error logs:', error);
@@ -102,7 +102,7 @@ const auditService = {
 
   getCriticalErrors: async (params = {}) => {
     try {
-      const response = await api.get('/audit/errors/critical', { params });
+      const response = await api.get('/audit-logs/errors/critical', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching critical errors:', error);
@@ -112,7 +112,7 @@ const auditService = {
 
   getErrorStats: async (params = {}) => {
     try {
-      const response = await api.get('/audit/errors/stats', { params });
+      const response = await api.get('/audit-logs/errors/stats', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching error stats:', error);
@@ -123,7 +123,7 @@ const auditService = {
   // Get error trends
   getErrorTrends: async (params = {}) => {
     try {
-      const response = await api.get('/audit/errors/trends', { params });
+      const response = await api.get('/audit-logs/errors/trends', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching error trends:', error);
@@ -133,7 +133,7 @@ const auditService = {
 
   getSecurityEvents: async (params = {}) => {
     try {
-      const response = await api.get('/audit/failed-actions', { params });
+      const response = await api.get('/audit-logs/failed-actions', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching security events:', error);
@@ -142,7 +142,7 @@ const auditService = {
   },
   cleanLogs: async (data) => {
     try {
-      const response = await api.delete('/audit/cleanup', { data });
+      const response = await api.delete('/audit-logs/cleanup', { data });
       return response.data;
     } catch (error) {
       console.error('Error cleaning logs:', error);

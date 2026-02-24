@@ -208,12 +208,12 @@ const DashboardInner = ({ children }) => {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ps-[280px]">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ps-[88px] peer-hover:lg:ps-[280px] transition-all duration-500 delay-100 ease-in-out">
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
         <ImpersonationBanner />
         <SystemAlertBanner />
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-5 scrollbar-hide">
           <div className="max-w-7xl mx-auto">{children}</div>
         </main>
       </div>

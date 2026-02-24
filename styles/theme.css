@@ -1,36 +1,60 @@
 /* Default (Modern/Dark) Theme - Based on User Request */
 :root,
 [data-theme='modern'] {
-  --color-primary: 215 254 250;
+  --color-primary: 204 255 0;
 
-  /* #D7FEFA (Mint) */
-  --color-primary-dark: 178 235 230;
+  /* #CCFF00 (Lime Green) */
+  --color-primary-dark: 163 204 0;
 
-  /* Darker Mint */
+  /* darker lime */
 
   --color-text: 255 255 255;
 
   /* #FFFFFF */
   --color-text-muted: 156 163 175;
 
-  /* Gray */
+  /* Gray-400 */
+  --color-text-dark: 17 24 39;
 
-  --color-border: 67 70 70;
+  /* For light cards */
 
-  /* Slightly lighter than surface */
+  --color-border: 45 45 45;
 
-  --color-background: 26 29 29;
+  /* Dark gray border */
 
-  /* #1A1D1D (Charcoal Black) */
-  --color-surface: 43 46 46;
+  --color-background: 243 244 246;
 
-  /* #2B2E2E (Dark Grey) */
+  /* Light gray background for main content area to make white cards pop */
+  --color-surface: 255 255 255;
 
-  --color-error: 248 113 113;
-  --color-success: 52 211 153;
-  --color-warning: 251 191 36;
-  --color-info: 96 165 250;
-  --color-ring: 215 254 250;
+  /* White for cards */
+
+  /* Specific Sidebar Colors */
+  --color-sidebar-bg: 26 26 26;
+
+  /* #1A1A1A (Dark Charcoal) */
+  --color-sidebar-text: 156 163 175;
+  --color-sidebar-active-bg: 204 255 0;
+
+  /* Lime Green background for active item */
+  --color-sidebar-active-text: 0 0 0;
+
+  /* Black text for active item */
+  --color-sidebar-border: 255 255 255;
+
+  /* White border (used with opacity) */
+  --color-sidebar-heading: 255 255 255;
+
+  /* White text for headings */
+  --color-sidebar-hover: 255 255 255;
+
+  /* White hover (used with opacity) */
+
+  --color-error: 239 68 68;
+  --color-success: 34 197 94;
+  --color-warning: 234 179 8;
+  --color-info: 59 130 246;
+  --color-ring: 204 255 0;
 }
 
 /* Light Theme */
@@ -47,6 +71,27 @@
   --color-warning: 245 158 11;
   --color-info: 59 130 246;
   --color-ring: 79 70 229;
+
+  /* Sidebar Light Theme Overrides */
+  --color-sidebar-bg: 255 255 255;
+  --color-sidebar-text: 75 85 99;
+
+  /* Gray-600 */
+  --color-sidebar-active-bg: 243 244 246;
+
+  /* Gray-100 */
+  --color-sidebar-active-text: 17 24 39;
+
+  /* Gray-900 */
+  --color-sidebar-border: 229 231 235;
+
+  /* Gray-200 */
+  --color-sidebar-heading: 17 24 39;
+
+  /* Gray-900 */
+  --color-sidebar-hover: 17 24 39;
+
+  /* Gray-900 (used with opacity) */
 }
 
 /* Dark Theme */

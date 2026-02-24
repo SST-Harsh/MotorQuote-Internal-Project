@@ -320,7 +320,7 @@ const cmsService = {
   // --- API KEYS MANAGEMENT ---
   getApiKeys: async () => {
     try {
-      const response = await api.get('/cms/api-keys');
+      const response = await api.get('/api-keys');
       const data = response.data;
       if (Array.isArray(data)) return data;
       if (data && Array.isArray(data.keys)) return data.keys;
@@ -334,7 +334,7 @@ const cmsService = {
 
   getApiKeyById: async (id) => {
     try {
-      const response = await api.get(`/cms/api-keys/${id}`);
+      const response = await api.get(`/api-keys/${id}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching API key by ID:', error);
@@ -344,7 +344,7 @@ const cmsService = {
 
   createApiKey: async (data) => {
     try {
-      const response = await api.post('/cms/api-keys', data);
+      const response = await api.post('/api-keys', data);
       return response.data;
     } catch (error) {
       console.error('Error creating API key:', error);
@@ -354,7 +354,7 @@ const cmsService = {
 
   updateApiKey: async (id, data) => {
     try {
-      const response = await api.put(`/cms/api-keys/${id}`, data);
+      const response = await api.put(`/api-keys/${id}`, data);
       return response.data;
     } catch (error) {
       console.error('Error updating API key:', error);
@@ -364,7 +364,7 @@ const cmsService = {
 
   regenerateApiSecret: async (id) => {
     try {
-      const response = await api.post(`/cms/api-keys/${id}/regenerate-secret`);
+      const response = await api.post(`/api-keys/${id}/regenerate-secret`);
       return response.data;
     } catch (error) {
       console.error('Error regenerating API secret:', error);
@@ -374,7 +374,7 @@ const cmsService = {
 
   revokeApiKey: async (id) => {
     try {
-      const response = await api.delete(`/cms/api-keys/${id}`);
+      const response = await api.delete(`/api-keys/${id}`);
       return response.data;
     } catch (error) {
       console.error('Error revoking API key:', error);

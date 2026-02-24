@@ -43,10 +43,21 @@ const userService = {
     }
   },
 
-  // Delete User (Soft Delete)
-  deleteUser: async (id) => {
+  // Delete User (Soft Delete or Permanent)
+  deleteUser: async (id, permanent = false) => {
     try {
-      const response = await api.delete(`/users/${id}`);
+      const params = permanent ? { permanent: true } : {};
+      const response = await api.delete(`/users/${id}`, { params });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Update User Status (Active/Inactive/Suspended)
+  updateUserStatus: async (id, status) => {
+    try {
+      const response = await api.patch(`/users/${id}/status`, { status });
       return response.data;
     } catch (error) {
       throw error;
@@ -132,20 +143,8 @@ const userService = {
 
   getMyProfile: async () => {
     try {
-      const userStr = localStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const role = user?.role ? normalizeRole(user.role) : '';
-
-      // If dealer manager, use the new specific endpoint as per documentation
-      if (role === 'dealer_manager') {
-        const response = await api.get('/users/profile');
-        return response.data;
-      }
-
-      // For other roles, keep using the ID-based endpoint of legacy API
-      const id = user?.id;
-      if (!id) throw new Error('User ID not found in session');
-      const response = await api.get(`/users/${id}`);
+      // Standardize to documented endpoint
+      const response = await api.get('/auth/me');
       return response.data;
     } catch (error) {
       throw error;
@@ -163,18 +162,8 @@ const userService = {
 
   updateMyProfile: async (data) => {
     try {
-      const userStr = localStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const role = user?.role ? normalizeRole(user.role) : '';
-
-      if (role === 'dealer_manager') {
-        const response = await api.put('/users/profile', data);
-        return response.data;
-      }
-
-      // Legacy support or fallback
-      const id = user?.id;
-      const response = await api.put(id ? `/users/${id}` : '/users/profile', data);
+      // Standardize to documented endpoint for updating current user profile
+      const response = await api.put('/users/profile', data);
       return response.data;
     } catch (error) {
       throw error;
@@ -210,7 +199,7 @@ const userService = {
 
   getProfileImage: async () => {
     try {
-      const response = await api.get('/users/profile');
+      const response = await api.get('/auth/me'); // Get user profile which contains avatar
       return response.data;
     } catch (error) {
       throw error;
@@ -219,18 +208,8 @@ const userService = {
 
   uploadProfileImage: async (file) => {
     try {
-      const userStr = localStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const role = user?.role ? normalizeRole(user.role) : '';
-
       const formData = new FormData();
-
-      // Use role-specific field names if necessary
-      if (role === 'dealer_manager') {
-        formData.append('profile_picture', file); // New Snake Case for Dealers
-      } else {
-        formData.append('profilePicture', file); // Legacy Camel Case for others
-      }
+      formData.append('profile_picture', file);
 
       const response = await api.post('/users/profile/picture', formData, {
         headers: { 'Content-Type': undefined },

@@ -33,11 +33,11 @@ export default function UsersPage() {
   const queryParams = {
     page,
     limit,
-    search: activeFilters.name,
-    role_ids: activeFilters.roles,
-    status: activeFilters.statuses,
-    tag_ids: activeFilters.tags,
-    dealership_id: activeFilters.dealership,
+    ...(activeFilters.name && { search: activeFilters.name }),
+    ...(activeFilters.roles?.length > 0 && { role_ids: activeFilters.roles }),
+    ...(activeFilters.statuses?.length > 0 && { status: activeFilters.statuses }),
+    ...(activeFilters.tags?.length > 0 && { tag_ids: activeFilters.tags }),
+    ...(activeFilters.dealership && { dealership_id: activeFilters.dealership }),
   };
 
   if (user?.role === 'admin' && !activeFilters.dealership) {
@@ -46,6 +46,13 @@ export default function UsersPage() {
       queryParams.dealership_id = dealerId;
     }
   }
+
+  // Strip empty/null/undefined values to prevent sending invalid params (e.g. search=, dealership_id=)
+  Object.keys(queryParams).forEach((key) => {
+    if (queryParams[key] === '' || queryParams[key] === null || queryParams[key] === undefined) {
+      delete queryParams[key];
+    }
+  });
 
   const isDealerManager = user?.role === 'dealer_manager';
   const isSuperAdmin = user?.role === 'super_admin';
@@ -207,6 +214,7 @@ export default function UsersPage() {
       return <SuperAdminUsers {...commonProps} />;
     case 'admin':
       return <AdminUsers {...commonProps} />;
+    case 'dealer':
     case 'dealer_manager':
       return <StaffManagement {...commonProps} />;
     default:

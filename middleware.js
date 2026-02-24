@@ -17,8 +17,16 @@ export function middleware(request) {
     '/inventory',
   ];
 
-  // Redirect legacy paths
-  if (path.startsWith('/admin') || path.startsWith('/dealer') || path.startsWith('/super-admin')) {
+  // Redirect legacy paths (but allow specific current dashboard paths like /admin/tags)
+  const legacyPrefixes = ['/admin', '/dealer', '/super-admin'];
+  const isLegacy = legacyPrefixes.some(
+    (prefix) =>
+      path.startsWith(prefix) &&
+      !path.startsWith('/admin/tags') &&
+      !path.startsWith('/admin/dashboard')
+  );
+
+  if (isLegacy) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
@@ -35,7 +43,7 @@ export function middleware(request) {
 
     // Role-based access control (RBAC)
     const isAdmin = role === 'admin' || role === 'super_admin';
-    const isDealer = role === 'dealer';
+    const isDealer = role === 'dealer' || role === 'dealer_manager';
 
     if (path.startsWith('/approvals') && !isAdmin) {
       return NextResponse.redirect(new URL('/unauthorized', request.url));
