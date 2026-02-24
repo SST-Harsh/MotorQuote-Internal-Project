@@ -14,10 +14,11 @@ const nextConfig = {
     ],
   },
   async rewrites() {
+    const API_URL = process.env.API_URL || 'http://192.168.29.137:5000';
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.API_URL}/:path*`,
+        destination: `${API_URL}/api/:path*`,
       },
     ];
   },
