@@ -5,6 +5,7 @@ import { Shield, Lock, Save, Eye, EyeOff } from 'lucide-react';
 import Swal from 'sweetalert2';
 import * as yup from 'yup';
 import authService from '../../services/authService';
+import securityService from '../../services/securityService';
 import { useAuth } from '../../context/AuthContext';
 
 export default function SecuritySettings() {
@@ -25,14 +26,21 @@ export default function SecuritySettings() {
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load 2FA state from localStorage
+  // Load 2FA state from Backend
   useEffect(() => {
-    const stored2FA = localStorage.getItem('user_2fa_enabled');
-    const enabled = stored2FA ? JSON.parse(stored2FA) : false;
+    const fetchSettings = async () => {
+      try {
+        const settings = await securityService.getSettings();
+        const enabled = settings.two_fa_enabled || settings.twoFAEnabled || false;
 
-    setIs2FAEnabled(enabled);
-    setInitial2FAEnabled(enabled);
-    setPending2FAState(enabled);
+        setIs2FAEnabled(enabled);
+        setInitial2FAEnabled(enabled);
+        setPending2FAState(enabled);
+      } catch (error) {
+        console.error('Failed to fetch security settings', error);
+      }
+    };
+    fetchSettings();
   }, []);
 
   // Handle 2FA Toggle - Stage the change
@@ -85,9 +93,10 @@ export default function SecuritySettings() {
           return;
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      localStorage.setItem('user_2fa_enabled', JSON.stringify(pending2FAState));
+      await securityService.updateSettings({
+        two_fa_enabled: pending2FAState,
+      });
 
       setIs2FAEnabled(pending2FAState);
       setInitial2FAEnabled(pending2FAState);
@@ -96,7 +105,7 @@ export default function SecuritySettings() {
       Swal.fire({
         icon: 'success',
         title: pending2FAState ? '2FA Enabled' : '2FA Disabled',
-        text: `Two-factor authentication has been ${pending2FAState ? 'enabled' : 'disabled'}.`,
+        text: `Two-factor authentication has been ${pending2FAState ? 'enabled' : 'disabled'} on the server.`,
         timer: 2000,
         showConfirmButton: false,
         toast: true,

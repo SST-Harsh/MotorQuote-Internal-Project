@@ -1,4 +1,4 @@
-import { Public_Sans, Racing_Sans_One } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import { AuthProvider } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { NotificationProvider } from '../context/NotificationContext';
@@ -10,16 +10,9 @@ import SocialProviders from '../components/common/SocialProviders';
 import './globals.css';
 import Script from 'next/script';
 
-const publicSans = Public_Sans({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-public-sans',
-  display: 'swap',
-});
-
-const racingSansOne = Racing_Sans_One({
-  weight: '400',
-  subsets: ['latin'],
-  variable: '--font-racing-sans',
+  variable: '--font-plus-jakarta',
   display: 'swap',
 });
 
@@ -27,7 +20,7 @@ export default async function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head></head>
-      <body className={`${publicSans.variable} ${racingSansOne.variable}`}>
+      <body className={`${plusJakarta.variable} font-sans bg-[#F5F5F7]`}>
         <ErrorBoundary>
           <QueryProvider>
             <ThemeProvider>

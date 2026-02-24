@@ -46,10 +46,10 @@ export const useRole = (id) => {
 /**
  * Fetch all permissions
  */
-export const usePermissions = () => {
+export const usePermissions = (params) => {
   return useQuery({
     queryKey: roleKeys.permissions(),
-    queryFn: () => roleService.getAllPermissions(),
+    queryFn: () => permissionService.getAllPermissions(params),
     select: (data) => {
       if (Array.isArray(data)) return data;
       if (Array.isArray(data?.permissions)) return data.permissions;

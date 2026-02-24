@@ -10,7 +10,7 @@ const dealershipService = {
   // Get all dealerships
   getAllDealerships: async (params = {}) => {
     try {
-      const response = await api.get('/admin/dealerships', { params });
+      const response = await api.get('/dealerships', { params });
       return response.data;
     } catch (error) {
       console.warn('Failed to fetch dealerships:', error);
@@ -63,7 +63,7 @@ const dealershipService = {
         });
       }
 
-      const response = await api.post('/admin/dealerships', payload, { headers });
+      const response = await api.post('/dealerships', payload, { headers });
       return response.data;
     } catch (error) {
       console.error('Failed to create dealership:', error);
@@ -117,7 +117,7 @@ const dealershipService = {
         });
       }
 
-      const response = await api.put(`/admin/dealerships/${id}`, payload, { headers });
+      const response = await api.put(`/dealerships/${id}`, payload, { headers });
       return response.data;
     } catch (error) {
       console.error('Failed to update dealership:', error);
@@ -127,7 +127,7 @@ const dealershipService = {
 
   deleteDealership: async (id) => {
     try {
-      const response = await api.delete(`/admin/dealerships/${id}`);
+      const response = await api.delete(`/dealerships/${id}`);
       return response.data;
     } catch (error) {
       console.error('Failed to delete dealership:', error);
@@ -137,7 +137,7 @@ const dealershipService = {
 
   getById: async (id) => {
     try {
-      const response = await api.get(`/admin/dealerships/${id}`);
+      const response = await api.get(`/dealerships/${id}`);
       return response.data;
     } catch (error) {
       console.error('Failed to fetch dealership:', error);
@@ -147,7 +147,7 @@ const dealershipService = {
 
   getDealershipStatistics: async () => {
     try {
-      const response = await api.get('/admin/stats');
+      const response = await api.get('/stats');
       return response.data;
     } catch (error) {
       console.warn('Failed to fetch dealership statistics:', error);
@@ -219,7 +219,7 @@ const dealershipService = {
 
   getDealershipOptions: async () => {
     try {
-      const response = await api.get('/admin/dealerships');
+      const response = await api.get('/dealerships');
       const items = Array.isArray(response.data)
         ? response.data
         : response.data?.dealerships ||

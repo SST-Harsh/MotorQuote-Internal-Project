@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import dynamic from 'next/dynamic';
+import permissionService from '@/services/permissionService';
 import roleService from '@/services/roleService';
 import Swal from 'sweetalert2';
 
@@ -19,12 +20,14 @@ export default function RolesPage() {
     setIsLoading(true);
     try {
       const [permsData, rolesData] = await Promise.all([
-        roleService.getAllPermissions(),
+        permissionService.getAllPermissions({ limit: 1000 }), // Fetch all for matrix
         roleService.getAllRoles(),
       ]);
+
       const extractedPerms = Array.isArray(permsData)
         ? permsData
-        : permsData?.permissions || permsData?.data || permsData?.data?.permissions || [];
+        : permsData?.permissions || permsData?.data || [];
+
       const extractedRoles = Array.isArray(rolesData)
         ? rolesData
         : rolesData?.roles || rolesData?.data || [];

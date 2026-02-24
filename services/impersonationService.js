@@ -13,7 +13,7 @@ const impersonationService = {
    */
   async startImpersonation(userId) {
     try {
-      const response = await api.post(`/admin/impersonate/${userId}`);
+      const response = await api.post(`/impersonate/${userId}`);
       console.log('[Impersonation] Started:', response.data);
       return response.data;
     } catch (error) {
@@ -28,7 +28,7 @@ const impersonationService = {
    */
   async exitImpersonation() {
     try {
-      const response = await api.post('/admin/exit-impersonation');
+      const response = await api.post('/exit-impersonation');
       console.log('[Impersonation] Exited:', response.data);
       return response.data;
     } catch (error) {
@@ -43,7 +43,7 @@ const impersonationService = {
    */
   async getImpersonationStatus() {
     try {
-      const response = await api.get('/admin/impersonation/status');
+      const response = await api.get('/impersonation/status');
       return response.data;
     } catch (error) {
       console.error('[Impersonation] Status check failed:', error);
@@ -58,7 +58,7 @@ const impersonationService = {
    */
   async getImpersonationHistory(params = {}) {
     try {
-      const response = await api.get('/admin/impersonation/history', { params });
+      const response = await api.get('/impersonation/history', { params });
       return response.data;
     } catch (error) {
       console.error('[Impersonation] History fetch failed:', error);
@@ -72,7 +72,7 @@ const impersonationService = {
    */
   async getActiveImpersonations() {
     try {
-      const response = await api.get('/admin/impersonation/active');
+      const response = await api.get('/impersonation/active');
       return response.data;
     } catch (error) {
       console.error('[Impersonation] Active sessions fetch failed:', error);

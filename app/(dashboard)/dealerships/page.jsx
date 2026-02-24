@@ -26,6 +26,7 @@ export default function DealershipsPage() {
     case 'admin':
       return <AdminDealerships />;
     case 'dealer':
+    case 'dealer_manager':
       return (
         <div className="p-8 text-center text-gray-500">
           Dealership profile for Dealer role coming soon...

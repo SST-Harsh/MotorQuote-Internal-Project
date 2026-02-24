@@ -127,14 +127,14 @@ const TopBar = ({ title, onMenuClick }) => {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] px-6 py-4 transition-all duration-300">
-      <div className="flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 bg-[rgb(var(--color-background))]/80 backdrop-blur-md px-4 sm:px-6 py-4 transition-all duration-300">
+      <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto">
         <div
           className={`flex items-center gap-3 md:gap-4 flex-shrink-0 ${showMobileSearch ? 'hidden md:flex' : 'flex'}`}
         >
           <button
             onClick={onMenuClick}
-            className="lg:hidden p-2 -ml-2 text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-lg transition-colors flex-shrink-0"
+            className="lg:hidden p-2 -ml-2 text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-surface))] rounded-xl transition-colors flex-shrink-0"
           >
             <Menu size={24} />
           </button>
@@ -152,7 +152,8 @@ const TopBar = ({ title, onMenuClick }) => {
               placeholder={t('searchPlaceholder')}
               autoFocus
               icon={Search}
-              className="mb-0 w-full h-10 text-sm"
+              className="mb-0 w-full h-10 text-sm shadow-sm"
+              inputClassName="bg-[rgb(var(--color-surface))] border-none rounded-full"
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
               onBlur={() => {
@@ -174,12 +175,12 @@ const TopBar = ({ title, onMenuClick }) => {
           </div>
           {/* Mobile Suggestions */}
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute left-4 right-4 top-full mt-2 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
+            <div className="absolute left-4 right-4 top-full mt-2 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto p-2">
               {suggestions.map((item, idx) => (
                 <div
                   key={`mob-${item.type}-${idx}`}
                   onClick={() => handleSuggestionClick(item)}
-                  className="px-4 py-3 hover:bg-[rgb(var(--color-background))] cursor-pointer border-b border-[rgb(var(--color-border))] last:border-0"
+                  className="px-4 py-3 hover:bg-[rgb(var(--color-background))] cursor-pointer rounded-xl"
                 >
                   <p className="text-sm font-medium text-[rgb(var(--color-text))]">{item.title}</p>
                   <p className="text-xs text-[rgb(var(--color-text-muted))]">{item.subtitle}</p>
@@ -190,27 +191,30 @@ const TopBar = ({ title, onMenuClick }) => {
         </div>
 
         <div className="flex-1 max-w-2xl px-4 hidden md:block relative">
-          <Input
-            type="text"
-            placeholder={t('searchPlaceholder')}
-            icon={isNavigating ? Loader2 : Search}
-            iconClassName={isNavigating ? 'animate-spin text-blue-500' : ''}
-            className="mb-0 w-full"
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-            onFocus={() => {
-              if (searchTerm) setShowSuggestions(true);
-            }}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-          />
+          <div className="relative group">
+            <Input
+              type="text"
+              placeholder={t('searchPlaceholder')}
+              icon={isNavigating ? Loader2 : Search}
+              iconClassName={isNavigating ? 'animate-spin text-blue-500' : ''}
+              className="mb-0 w-full transition-transform duration-200"
+              inputClassName="bg-[rgb(var(--color-surface))] border-[rgb(var(--color-border))] rounded-full shadow-sm hover:shadow-md transition-shadow px-6 py-3"
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              onFocus={() => {
+                if (searchTerm) setShowSuggestions(true);
+              }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            />
+          </div>
 
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute top-full left-4 right-4 mt-2 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-lg z-50 max-h-96 overflow-y-auto">
+            <div className="absolute top-full left-4 right-4 mt-2 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl shadow-2xl z-50 max-h-96 overflow-y-auto p-2">
               {suggestions.map((item, idx) => (
                 <div
                   key={`${item.type}-${idx}`}
                   onClick={() => handleSuggestionClick(item)}
-                  className="px-4 py-3 hover:bg-[rgb(var(--color-background))] cursor-pointer border-b border-[rgb(var(--color-border))] last:border-0 group transition-colors"
+                  className="px-4 py-3 hover:bg-[rgb(var(--color-background))] cursor-pointer rounded-xl group transition-colors mb-1 last:mb-0"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary))/0.1] px-2 py-0.5 rounded-full">
@@ -234,18 +238,22 @@ const TopBar = ({ title, onMenuClick }) => {
           )}
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 justify-end">
+        <div className="flex items-center gap-2 flex-shrink-0 justify-end bg-[rgb(var(--color-surface))] p-1.5 rounded-full shadow-sm border border-[rgb(var(--color-border))]">
           {!showMobileSearch && (
             <button
               onClick={() => setShowMobileSearch(true)}
-              className="md:hidden p-2 text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] rounded-lg"
+              className="md:hidden p-2 text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] rounded-full"
             >
               <Search size={20} />
             </button>
           )}
-          <LanguageSwitcher />
-          <NotificationCenter />
-          <ThemeSwitcher />
+          <div className="flex items-center gap-1 sm:gap-2 px-1">
+            <LanguageSwitcher />
+            <div className="w-px h-6 bg-[rgb(var(--color-border))] mx-1"></div>
+            <NotificationCenter />
+            <div className="w-px h-6 bg-[rgb(var(--color-border))] mx-1"></div>
+            <ThemeSwitcher />
+          </div>
         </div>
       </div>
     </header>

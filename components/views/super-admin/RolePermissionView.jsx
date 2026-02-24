@@ -198,33 +198,36 @@ export default function RolePermissionView({
 
   return (
     <div className="space-y-8 pb-20 animate-fade-in">
-      <PageHeader
-        title="Access Control"
-        subtitle="Define capabilities for each system role."
-        actions={
-          <div className="flex gap-3">
-            <button
-              onClick={handleReset}
-              disabled={isSuperAdmin}
-              className="px-4 py-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] rounded-xl transition-colors disabled:opacity-50"
-            >
-              Reset to Default
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving || isSuperAdmin}
-              className={`flex items-center gap-2 text-white px-6 py-2 rounded-xl transition-all shadow-lg disabled:opacity-70 bg-[rgb(var(--color-primary))]`}
-            >
-              {isSaving ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Save size={18} />
-              )}
-              <span>Save Changes</span>
-            </button>
-          </div>
-        }
-      />
+      {/* Dashboard Style Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">Access Control</h1>
+          <p className="text-[rgb(var(--color-text-muted))] text-sm mt-1">
+            Define capabilities and permissions for each system role.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleReset}
+            disabled={isSuperAdmin}
+            className="px-4 py-2.5 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] rounded-xl transition-colors disabled:opacity-50 border border-transparent hover:border-[rgb(var(--color-border))]"
+          >
+            Reset to Default
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving || isSuperAdmin}
+            className={`flex items-center gap-2 text-white px-6 py-2.5 rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 bg-[rgb(var(--color-primary))] font-semibold`}
+          >
+            {isSaving ? (
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Save size={18} />
+            )}
+            <span>Save Changes</span>
+          </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {(Array.isArray(roles) ? roles : []).map((role) => {

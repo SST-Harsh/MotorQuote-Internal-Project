@@ -34,20 +34,48 @@ import {
   Fingerprint,
   User2,
   LucideActivitySquare,
+  Users,
+  TrendingUp, // Added
+  UserCheck, // Restored
+  UserX, // Restored
 } from 'lucide-react';
 import userService from '../../../services/userService';
-import auditService from '@/services/auditService';
-import { SkeletonTable } from '@/components/common/Skeleton';
-import { useAuth } from '@/context/AuthContext';
-import { useTranslation } from '@/context/LanguageContext';
-import PageHeader from '@/components/common/PageHeader';
-import TagInput from '../../common/tags/TagInput';
+import { SkeletonTable } from '../../common/Skeleton';
 import TagList from '../../common/tags/TagList';
 import tagService from '@/services/tagService';
 import MultiSelect from '../../common/MultiSelect';
+import { useTranslation } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
+import TagInput from '../../common/tags/TagInput';
+import permissionService from '../../../services/permissionService';
 
+// Reusing DesignWidget Pattern locally for now (should be shared later)
+const StatWidget = ({ title, value, icon: Icon, color, trend }) => (
+  <div className="bg-[rgb(var(--color-surface))] rounded-3xl p-6 shadow-sm border border-[rgb(var(--color-border))] flex items-start justify-between hover:shadow-md transition-all group">
+    <div>
+      <p className="text-sm font-semibold text-[rgb(var(--color-text-muted))] mb-1">{title}</p>
+      <h3 className="text-3xl font-bold text-[rgb(var(--color-text))]">{value}</h3>
+      {trend && (
+        <div
+          className={`flex items-center gap-1 mt-2 text-xs font-medium ${trend.positive ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'} px-2 py-0.5 rounded-full w-fit`}
+        >
+          <TrendingUp size={12} className={trend.positive ? '' : 'rotate-180'} />
+          <span>{trend.label}</span>
+        </div>
+      )}
+    </div>
+    <div
+      className={`p-3 rounded-2xl ${color} bg-opacity-10 text-[rgb(var(--color-text))] group-hover:scale-110 transition-transform duration-300 shadow-sm border border-[rgb(var(--color-border))/0.5]`}
+    >
+      <Icon
+        size={24}
+        className={`text-${color.replace('bg-', '').replace('-500', '-600')}`}
+        style={{ color: color.includes('lime') ? '#a3e635' : '' }}
+      />
+    </div>
+  </div>
+);
 const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
-  const { t } = useTranslation('users');
   const [expanded, setExpanded] = useState({});
 
   const grouped = useMemo(
@@ -120,11 +148,7 @@ const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
                 </button>
                 <div className="flex items-center gap-2">
                   <h4 className="font-semibold text-sm text-[rgb(var(--color-text))]">
-                    {t('form.management', {
-                      category: t(`permissions.categories.${category.toLowerCase()}`, {
-                        defaultValue: category,
-                      }),
-                    })}
+                    {category} Management
                   </h4>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-[rgb(var(--color-background))] text-[rgb(var(--color-text-muted))] border border-[rgb(var(--color-border))]">
                     {selectedCount}/{perms.length}
@@ -139,7 +163,7 @@ const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
                 }}
                 className="text-xs font-medium text-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary-dark))] px-2 py-1 rounded hover:bg-[rgb(var(--color-primary))]/5 transition-colors"
               >
-                {isAllSelected ? t('form.deselectAll') : t('form.selectAll')}
+                {isAllSelected ? 'Deselect All' : 'Select All'}
               </button>
             </div>
 
@@ -164,11 +188,11 @@ const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
                     </div>
                     <div>
                       <span className="text-sm font-medium text-[rgb(var(--color-text))] group-hover:text-[rgb(var(--color-primary))] transition-colors">
-                        {t(`permissions.${p.code}.label`, { defaultValue: p.label })}
+                        {p.label}
                       </span>
                       {p.description && (
                         <p className="text-xs text-[rgb(var(--color-text-muted))] mt-0.5">
-                          {t(`permissions.${p.code}.description`, { defaultValue: p.description })}
+                          {p.description}
                         </p>
                       )}
                     </div>
@@ -182,7 +206,6 @@ const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
     </div>
   );
 };
-
 const SuperAdminUsers = ({
   users = [],
   roles: rolesProp = [],
@@ -198,10 +221,9 @@ const SuperAdminUsers = ({
   const [viewMode, setViewMode] = useState('list');
   const { t } = useTranslation('users');
   const router = useRouter();
-  const { startImpersonation } = useAuth();
+  const { startImpersonation, user: currentUser } = useAuth(); // Added currentUser
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
-
   const [openActionMenu, setOpenActionMenu] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
@@ -415,6 +437,23 @@ const SuperAdminUsers = ({
     if (activeFilters.tags && activeFilters.tags.length > 0) count++;
     return count;
   }, [activeFilters]);
+
+  // Stats Calculation
+  const stats = useMemo(() => {
+    const total = allUsers.length;
+    const active = allUsers.filter((u) => u.status === 'active').length;
+    const suspended = allUsers.filter((u) => u.status === 'suspended').length;
+
+    // Calculate new users (created in last 7 days) - Mock logic if created_at missing, or use real
+    // Assuming mock for now or reliable field
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const newUsers = allUsers.filter(
+      (u) => new Date(u.created_at || Date.now()) > oneWeekAgo
+    ).length;
+
+    return { total, active, suspended, newUsers };
+  }, [allUsers]);
 
   useEffect(() => {
     const handleClickOutside = () => setOpenActionMenu(null);
@@ -1071,133 +1110,172 @@ const SuperAdminUsers = ({
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={t('title')}
-        subtitle={t('subtitle')}
-        actions={
+    <div className="space-y-6 animate-fade-in p-4 pb-20">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">User Management</h1>
+          <p className="text-[rgb(var(--color-text-muted))] text-sm mt-1">
+            Manage system access, roles, and permissions across all dealerships.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
           <button
             onClick={() => {
               setEditingUser(null);
               setViewMode('form');
             }}
-            className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg"
+            className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-5 py-2.5 rounded-xl hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
           >
-            <UserPlus size={18} />
-            <span>Add New User</span>
+            <UserPlus size={20} />
+            <span className="font-semibold">Add New User</span>
           </button>
-        }
-      />
+        </div>
+      </div>
+
+      {/* Stats Widgets */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatWidget
+          title="Total Users"
+          value={stats.total}
+          icon={Users}
+          color="bg-blue-500"
+          trend={{ label: 'Total registered', positive: true }}
+        />
+        <StatWidget
+          title="Active Users"
+          value={stats.active}
+          icon={UserCheck}
+          color="bg-emerald-500"
+          trend={{ label: 'Currently active', positive: true }}
+        />
+        <StatWidget
+          title="New This Week"
+          value={stats.newUsers}
+          icon={UserPlus}
+          color="bg-amber-500"
+          trend={{ label: 'Last 7 days', positive: true }}
+        />
+        <StatWidget
+          title="Suspended"
+          value={stats.suspended}
+          icon={UserX}
+          color="bg-red-500"
+          trend={{ label: 'Action required', positive: false }}
+        />
+      </div>
 
       {loading ? (
-        <div className="p-6 overflow-hidden">
+        <div className="bg-[rgb(var(--color-surface))] rounded-3xl p-6 shadow-sm border border-[rgb(var(--color-border))]">
           <SkeletonTable rows={5} />
         </div>
       ) : (
-        <DataTable
-          onFilterClick={() => setIsFilterDrawerOpen(true)}
-          onClearFilters={() => {
-            setActiveFilters({ name: '', roles: [], statuses: [], dealership: '', tags: [] });
-            setTempFilters({ name: '', roles: [], statuses: [], dealership: '', tags: [] });
-          }}
-          showClearFilter={Object.values(activeFilters).some((v) =>
-            Array.isArray(v) ? v.length > 0 : v !== ''
-          )}
-          data={filteredUsers}
-          searchKeys={['name', 'email', 'work']}
-          highlightId={highlightId}
-          manualFiltering={true} // Ensure server-side data is displayed directly
-          columns={[
-            { header: t('table.name'), accessor: 'name', sortable: true, className: 'font-bold' },
-            {
-              header: t('table.email'),
-              accessor: 'email',
-              className: 'text-[rgb(var(--color-text-muted))]',
-            },
-            {
-              header: t('table.role'),
-              type: 'badge',
-              accessor: 'role',
-              config: {
-                purple: ['admin'],
-                blue: ['dealer manager', 'manager'],
-                orange: ['staff', 'support staff'],
+        <div className="bg-[rgb(var(--color-surface))] rounded-3xl shadow-sm border border-[rgb(var(--color-border))] overflow-hidden">
+          <DataTable
+            onFilterClick={() => setIsFilterDrawerOpen(true)}
+            onClearFilters={() => {
+              setActiveFilters({ name: '', roles: [], statuses: [], dealership: '', tags: [] });
+              setTempFilters({ name: '', roles: [], statuses: [], dealership: '', tags: [] });
+            }}
+            showClearFilter={Object.values(activeFilters).some((v) =>
+              Array.isArray(v) ? v.length > 0 : v !== ''
+            )}
+            data={filteredUsers}
+            searchKeys={['name', 'email', 'work']}
+            highlightId={highlightId}
+            manualFiltering={true} // Ensure server-side data is displayed directly
+            columns={[
+              { header: t('table.name'), accessor: 'name', sortable: true, className: 'font-bold' },
+              {
+                header: t('table.email'),
+                accessor: 'email',
+                className: 'text-[rgb(var(--color-text-muted))]',
               },
-            },
-            {
-              header: t('table.tags', 'Tags'),
-              accessor: (row) => <TagList tags={row.tags || []} limit={2} />,
-              className: 'min-w-[150px]',
-            },
-            // {header: 'Work', accessor: 'work' },
-            {
-              header: t('table.status'),
-              type: 'badge',
-              accessor: 'status',
-              config: {
-                green: ['Active'],
-                gray: ['Inactive'],
-                red: ['Suspended'],
+              {
+                header: t('table.role'),
+                type: 'badge',
+                accessor: 'role',
+                config: {
+                  purple: ['admin'],
+                  blue: ['dealer manager', 'manager'],
+                  orange: ['staff', 'support staff'],
+                },
               },
-            },
-            {
-              header: t('table.actions'),
-              className: 'text-center',
-              accessor: (row) => (
-                <div className="relative flex justify-center">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Convert DOMRect to plain object to ensure properties are preserved in state
-                      const domRect = e.currentTarget.getBoundingClientRect();
-                      const rect = {
-                        top: domRect.top,
-                        bottom: domRect.bottom,
-                        left: domRect.left,
-                        right: domRect.right,
-                        width: domRect.width,
-                        height: domRect.height,
-                        mouseX: e.clientX,
-                        mouseY: e.clientY,
-                      };
+              {
+                header: t('table.tags', 'Tags'),
+                accessor: (row) => <TagList tags={row.tags || []} limit={2} />,
+                className: 'min-w-[150px]',
+              },
+              // {header: 'Work', accessor: 'work' },
+              {
+                header: t('table.status'),
+                type: 'badge',
+                accessor: 'status',
+                config: {
+                  green: ['Active'],
+                  gray: ['Inactive'],
+                  red: ['Suspended'],
+                },
+              },
+              {
+                header: t('table.actions'),
+                className: 'text-center',
+                accessor: (row) => (
+                  <div className="relative flex justify-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Convert DOMRect to plain object to ensure properties are preserved in state
+                        const domRect = e.currentTarget.getBoundingClientRect();
+                        const rect = {
+                          top: domRect.top,
+                          bottom: domRect.bottom,
+                          left: domRect.left,
+                          right: domRect.right,
+                          width: domRect.width,
+                          height: domRect.height,
+                          mouseX: e.clientX,
+                          mouseY: e.clientY,
+                        };
 
-                      // Manual positioning with overflow handling
-                      // w-48 is 192px. Align right edge of menu with right edge of trigger.
-                      let position = { top: rect.bottom + 4, left: rect.right - 192 };
+                        // Manual positioning with overflow handling
+                        // w-48 is 192px. Align right edge of menu with right edge of trigger.
+                        let position = { top: rect.bottom + 4, left: rect.right - 192 };
 
-                      // Check if menu fits below (assuming ~300px height for safety)
-                      const spaceBelow = window.innerHeight - rect.bottom;
-                      if (spaceBelow < 300) {
-                        // Flip to top - Anchor to bottom of menu to top of button
-                        // bottom = distance from viewport bottom to button top - 8px padding (aggressive overlap)
-                        const bottom = window.innerHeight - rect.top - 8;
-                        position = { bottom, left: rect.right - 192 };
-                      }
+                        // Check if menu fits below (assuming ~300px height for safety)
+                        const spaceBelow = window.innerHeight - rect.bottom;
+                        if (spaceBelow < 300) {
+                          // Flip to top - Anchor to bottom of menu to top of button
+                          // bottom = distance from viewport bottom to button top - 8px padding (aggressive overlap)
+                          const bottom = window.innerHeight - rect.top - 8;
+                          position = { bottom, left: rect.right - 192 };
+                        }
 
-                      if (openActionMenu?.id === row.id) {
-                        setOpenActionMenu(null);
-                      } else {
-                        setOpenActionMenu({
-                          id: row.id,
-                          position,
-                          align: 'end',
-                        });
-                      }
-                    }}
-                    className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-primary))] text-[rgb(var(--color-text))] ' : 'text-[rgba(var(--color-text-muted))] hover:bg-[rgba(var(--color-primary))] hover:text-[rgb(var(--color-text))] '}`}
-                  >
-                    <MoreVertical size={16} />
-                  </button>
-                </div>
-              ),
-            },
-          ]}
-          loading={loading}
-          itemsPerPage={preferences.items_per_page || 10}
-          searchPlaceholder="Search users by name, email, or role..."
-          onSelectionChange={handleSelectionChange}
-          selectedIds={selectedUserIds}
-        />
+                        if (openActionMenu?.id === row.id) {
+                          setOpenActionMenu(null);
+                        } else {
+                          setOpenActionMenu({
+                            id: row.id,
+                            position,
+                            align: 'end',
+                          });
+                        }
+                      }}
+                      className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-primary))] text-[rgb(var(--color-text))] ' : 'text-[rgba(var(--color-text-muted))] hover:bg-[rgba(var(--color-primary))] hover:text-[rgb(var(--color-text))] '}`}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+            loading={loading}
+            itemsPerPage={preferences.items_per_page || 10}
+            searchPlaceholder="Search users by name, email, or role..."
+            onSelectionChange={handleSelectionChange}
+            selectedIds={selectedUserIds}
+          />
+        </div>
       )}
 
       {selectedUserIds.length > 0 && (

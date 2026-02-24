@@ -13,7 +13,7 @@ const analyticsService = {
 
   // Get Admin Dashboard Analytics
   getAdminAnalytics: async (params = {}) => {
-    const response = await api.get('/analytics/admin/dashboard', { params });
+    const response = await api.get('/dashboard/stats', { params });
     return response.data;
   },
 

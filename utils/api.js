@@ -87,6 +87,7 @@ const clearAuthData = () => {
   removeStorageItem('user');
   removeStorageItem('authTokenExpiresAt');
   Cookies.remove('role');
+  Cookies.remove('authToken');
 };
 
 /**
@@ -188,8 +189,30 @@ const handle403Error = (error) => {
   const isAuthRequest = error.config?.url?.match(
     /\/auth\/(login|verify-2fa|send-login-otp|forgot-password|reset-password)/
   );
+
+  const resData = error.response?.data;
+  const message = resData?.message || '';
+  const isSuspended =
+    resData?.status === 'suspended' ||
+    message.toLowerCase().includes('suspended') ||
+    message.toLowerCase().includes('account is inactive');
+
   if (!isAuthRequest) {
-    showError('Access Denied', 'You do not have permission to access this resource.');
+    // Only show Access Denied if it's NOT a suspension
+    if (!isSuspended) {
+      showError('Access Denied', 'You do not have permission to access this resource.');
+    } else {
+      // Clear data and redirect to login with parameter as per documentation
+      clearAuthData();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login?suspended=true';
+      }
+    }
+
+    // Trigger proactive UI permission sync as a secondary safety
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:refresh-permissions'));
+    }
   }
 };
 

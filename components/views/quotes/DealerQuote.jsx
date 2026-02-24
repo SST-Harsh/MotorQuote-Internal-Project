@@ -333,15 +333,19 @@ export default function DealerQuote() {
         icon: 'error',
       });
     }
-  };
 
-  return (
-    <div className="space-y-8 animate-fade-in">
-      <PageHeader
-        title="My Quotes"
-        subtitle="Manage your customer quotes and sales"
-        actions={
-          <>
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-2">
+          <div>
+            <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">
+              My <span className="text-[#6a7150cb] font-bold">Quotes</span>
+            </h1>
+            <p className="text-[rgb(var(--color-text-muted))] text-sm mt-1">
+              Manage your customer quotes and sales
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
             <button
               onClick={handleExport}
               className="flex items-center gap-2 px-4 py-2.5 bg-[rgb(var(--color-surface))] text-[rgb(var(--color-text))] rounded-xl font-semibold hover:bg-[rgb(var(--color-background))] transition-all border border-[rgb(var(--color-border))]"
@@ -351,356 +355,386 @@ export default function DealerQuote() {
             </button>
             <button
               onClick={() => router.push('/quotes/new')}
-              className="flex items-center gap-2 px-5 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-xl font-semibold shadow-lg shadow-[rgb(var(--color-primary))/0.3] hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              className="flex items-center gap-2 px-6 py-2.5 bg-[#CCFF00] text-black rounded-xl font-bold shadow-sm hover:shadow-md transition-all active:scale-95"
             >
               <Plus size={20} />
               <span>Create New Quote</span>
             </button>
-          </>
-        }
-        stats={[
-          <StatCard
-            key="total-value"
-            title="Total Value"
-            value={`$${Number(stats.totalValue || 0).toLocaleString()}`}
-            icon={<DollarSign size={20} />}
-            accent="rgb(var(--color-success))"
-            helperText="Potential revenue"
-          />,
-          <StatCard
-            key="pending"
-            title="Pending"
-            value={stats.pendingCount || 0}
-            icon={<CheckCircle size={20} />}
-            accent="rgb(var(--color-warning))"
-            helperText="Awaiting approval"
-          />,
-          <StatCard
-            key="approved"
-            title="Approved"
-            value={stats.approvedCount || 0}
-            icon={<CheckCircle size={20} />}
-            accent="rgb(var(--color-primary))"
-            helperText="Ready for sale"
-          />,
-          <StatCard
-            key="conversion"
-            title="Conversion"
-            value={`${stats.conversionRate || 0}%`}
-            icon={<FileText size={20} />}
-            accent="rgb(var(--color-info))"
-            helperText="Success rate"
-          />,
-        ]}
-      />
+          </div>
+        </div>
 
-      <div className="min-h-0 flex flex-col">
-        <div>
-          <DataTable
-            data={filteredQuotes}
-            itemsPerPage={preferences.items_per_page || 10}
-            highlightId={highlightId}
-            selectedIds={selectedQuoteIds}
-            onSelectionChange={setSelectedQuoteIds}
-            searchKeys={['customer_name', 'vehicle', 'amount']}
-            onFilterClick={() => setIsFilterOpen(true)}
-            onClearFilters={clearFilters}
-            showClearFilter={
-              filters.status !== '' ||
-              (filters.dateStart !== null && filters.dateStart !== '') ||
-              (filters.dateEnd !== null && filters.dateEnd !== '') ||
-              filters.minPrice !== '' ||
-              filters.maxPrice !== '' ||
-              (filters.tags && filters.tags.length > 0)
-            }
-            columns={[
-              {
-                header: 'Client',
-                type: 'avatar',
-                sortable: true,
-                sortKey: 'customer_name',
-                config: (row) => ({
-                  name: row.customer_name,
-                  subtext: row.created_at ? formatDate(row.created_at) : 'N/A',
-                }),
-              },
-              {
-                header: 'Vehicle',
-                accessor: (row) => (
-                  <span className="font-medium text-sm text-[rgb(var(--color-text))]">
-                    {row.vehicle_info
-                      ? `${row.vehicle_info.year} ${row.vehicle_info.make} ${row.vehicle_info.model}`
-                      : 'N/A'}
-                  </span>
-                ),
-                sortable: true,
-                sortKey: 'vehicle_info.make',
-              },
-              {
-                header: 'Amount',
-                type: 'currency',
-                sortable: true,
-                sortKey: 'amount',
-                accessor: 'amount',
-              },
-              {
-                header: 'Tags',
-                accessor: (row) => <TagList tags={row.tags} limit={2} />,
-                className: 'min-w-[120px]',
-              },
-              {
-                header: 'Status',
-                type: 'badge',
-                sortable: true,
-                sortKey: 'status',
-                accessor: 'status',
-                config: {
-                  green: ['approved', 'sold', 'converted'],
-                  orange: ['pending'],
-                  red: ['rejected'],
-                  gray: ['expired', 'archived'],
-                },
-              },
-              {
-                header: 'Actions',
-                className: 'text-center',
-                headerClassName: 'text-center',
-                accessor: (row) => (
-                  <div className="relative flex justify-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setOpenActionMenu({
-                          id: row.id,
-                          triggerRect: rect,
-                        });
-                      }}
-                      className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))]'}`}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                  </div>
-                ),
-              },
-            ]}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard
+            title="Total Pipelines"
+            value={`$${Number(stats.totalValue || 0).toLocaleString()}`}
+            icon={<DollarSign size={20} className="text-black" />}
+            trend="+12.5%"
+            trendUp={true}
+            description="Potential revenue"
+            className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
+            iconClassName="bg-[#CCFF00] p-2 rounded-xl"
+          />
+          <StatCard
+            title="Pending Review"
+            value={stats.pendingCount || 0}
+            icon={<Clock size={20} className="text-white" />}
+            trend="+5"
+            trendUp={true}
+            description="Awaiting approval"
+            className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
+            iconClassName="bg-[#8b5cf6] p-2 rounded-xl"
+          />
+          <StatCard
+            title="Approved Quotes"
+            value={stats.approvedCount || 0}
+            icon={<CheckCircle size={20} className="text-white" />}
+            trend="+8%"
+            trendUp={true}
+            description="Ready for sale"
+            className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
+            iconClassName="bg-[#ec4899] p-2 rounded-xl"
+          />
+          <StatCard
+            title="Conversion Rate"
+            value={`${stats.conversionRate || 0}%`}
+            icon={<FileText size={20} className="text-white" />}
+            trend="+2.4%"
+            trendUp={true}
+            description="Success rate"
+            className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
+            iconClassName="bg-[#06b6d4] p-2 rounded-xl"
           />
         </div>
-      </div>
 
-      {openActionMenu && (
-        <ActionMenuPortal
-          isOpen={!!openActionMenu}
-          onClose={() => setOpenActionMenu(null)}
-          triggerRect={openActionMenu.triggerRect}
-          align="end"
-        >
-          {(() => {
-            if (!openActionMenu?.id) return null;
-            const row = filteredQuotes.find((q) => q.id === openActionMenu.id);
-            if (!row) return null;
+        <div className="min-h-0 flex flex-col">
+          <div>
+            <DataTable
+              data={filteredQuotes}
+              itemsPerPage={preferences.items_per_page || 10}
+              highlightId={highlightId}
+              selectedIds={selectedQuoteIds}
+              onSelectionChange={setSelectedQuoteIds}
+              searchKeys={['customer_name', 'vehicle_summary', 'quote_amount']}
+              onFilterClick={() => setIsFilterOpen(true)}
+              onClearFilters={clearFilters}
+              showClearFilter={
+                filters.status !== '' ||
+                (filters.dateStart !== null && filters.dateStart !== '') ||
+                (filters.dateEnd !== null && filters.dateEnd !== '') ||
+                filters.minPrice !== '' ||
+                filters.maxPrice !== '' ||
+                (filters.tags && filters.tags.length > 0)
+              }
+              columns={[
+                {
+                  header: 'Client',
+                  type: 'avatar',
+                  sortable: true,
+                  sortKey: 'customer_name',
+                  config: (row) => ({
+                    name: row.customer_name,
+                    subtext: row.created_at ? formatDate(row.created_at) : 'N/A',
+                  }),
+                },
+                {
+                  header: 'Vehicle',
+                  accessor: 'vehicle_summary',
+                  sortable: true,
+                  sortKey: 'vehicle_summary',
+                  className: 'text-sm',
+                },
+                {
+                  header: 'Amount',
+                  type: 'currency',
+                  sortable: true,
+                  sortKey: 'quote_amount',
+                  accessor: 'quote_amount',
+                },
+                {
+                  header: 'Tags',
+                  accessor: (row) => <TagList tags={row.tags} limit={2} />,
+                  className: 'min-w-[120px]',
+                },
+                {
+                  header: 'Status',
+                  type: 'badge',
+                  sortable: true,
+                  sortKey: 'status',
+                  accessor: 'status',
+                  config: {
+                    green: ['approved', 'sold', 'converted'],
+                    orange: ['pending'],
+                    red: ['rejected'],
+                    gray: ['expired', 'archived'],
+                  },
+                },
+                {
+                  header: 'Actions',
+                  className: 'text-center',
+                  headerClassName: 'text-center',
+                  accessor: (row) => (
+                    <div className="relative flex justify-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const domRect = e.currentTarget.getBoundingClientRect();
+                          const triggerRect = {
+                            top: domRect.top,
+                            bottom: domRect.bottom,
+                            left: domRect.left,
+                            right: domRect.right,
+                            width: domRect.width,
+                            height: domRect.height,
+                          };
 
-            return (
-              <>
-                <button
-                  onClick={() => {
-                    router.push(`/quotes/${row.id}`);
-                    setOpenActionMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))] rounded-md transition-colors"
-                >
-                  <Eye size={14} /> View Details
-                </button>
-
-                <button
-                  onClick={() => {
-                    router.push(`/quotes/${row.id}?edit=true`);
-                    setOpenActionMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))] rounded-md transition-colors"
-                >
-                  <Edit size={14} /> Edit Quote
-                </button>
-
-                {row.status === 'pending' && (
-                  <>
-                    <button
-                      onClick={() => {
-                        handleApprove(row);
-                        setOpenActionMenu(null);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-success))]/5 hover:text-[rgb(var(--color-success))] rounded-md transition-colors"
-                    >
-                      <CheckCircle size={14} /> Approve Quote
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleReject(row);
-                        setOpenActionMenu(null);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-error))]/5 hover:text-[rgb(var(--color-error))] rounded-md transition-colors"
-                    >
-                      <X size={14} /> Reject Quote
-                    </button>
-                  </>
-                )}
-
-                {row.status === 'approved' && (
-                  <button
-                    onClick={() => {
-                      handleMarkSold(row);
-                      setOpenActionMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-info))]/5 hover:text-[rgb(var(--color-info))] rounded-md transition-colors"
-                  >
-                    <DollarSign size={14} /> Mark as Sold
-                  </button>
-                )}
-
-                {(row.status === 'rejected' || row.status === 'expired') && (
-                  <button
-                    onClick={() => {
-                      handleReopen(row);
-                      setOpenActionMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-warning))]/5 hover:text-[rgb(var(--color-warning))] rounded-md transition-colors"
-                  >
-                    <RotateCcw size={14} /> Reopen Quote
-                  </button>
-                )}
-
-                <div className="h-px bg-[rgb(var(--color-border))] my-1"></div>
-
-                <button
-                  onClick={() => {
-                    handleArchive(row.id);
-                    setOpenActionMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5 rounded-md transition-colors"
-                >
-                  <Archive size={14} /> Archive
-                </button>
-              </>
-            );
-          })()}
-        </ActionMenuPortal>
-      )}
-
-      <FilterDrawer
-        isOpen={isFilterOpen}
-        onClose={() => setIsFilterOpen(false)}
-        onReset={() =>
-          setTempFilters({
-            status: '',
-            minPrice: '',
-            maxPrice: '',
-            dateStart: '',
-            dateEnd: '',
-            tags: [],
-          })
-        }
-        onApply={() => {
-          setFilters(tempFilters);
-          setIsFilterOpen(false);
-        }}
-      >
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Status</h3>
-            <select
-              value={tempFilters.status}
-              onChange={(e) => setTempFilters((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-            >
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Price Range</h3>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]">
-                  $
-                </span>
-                <input
-                  type="number"
-                  placeholder="Min"
-                  value={tempFilters.minPrice}
-                  onChange={(e) =>
-                    setTempFilters((prev) => ({ ...prev, minPrice: e.target.value }))
-                  }
-                  className="w-full pl-7 pr-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-                />
-              </div>
-              <span className="text-[rgb(var(--color-text-muted))]">-</span>
-              <div className="flex-1 relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]">
-                  $
-                </span>
-                <input
-                  type="number"
-                  placeholder="Max"
-                  value={tempFilters.maxPrice}
-                  onChange={(e) =>
-                    setTempFilters((prev) => ({ ...prev, maxPrice: e.target.value }))
-                  }
-                  className="w-full pl-7 pr-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Date Range</h3>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs text-[rgb(var(--color-text-muted))] font-medium">
-                  Start Date
-                </label>
-                <CustomDateTimePicker
-                  value={tempFilters.dateStart}
-                  onChange={(val) => setTempFilters((prev) => ({ ...prev, dateStart: val }))}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-[rgb(var(--color-text-muted))] font-medium">
-                  End Date
-                </label>
-                <CustomDateTimePicker
-                  value={tempFilters.dateEnd}
-                  onChange={(val) => setTempFilters((prev) => ({ ...prev, dateEnd: val }))}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Tags</h3>
-            <TagFilter
-              selectedTags={tempFilters.tags || []}
-              onChange={(tags) => setTempFilters((prev) => ({ ...prev, tags }))}
-              type="quote"
-              options={useMemo(() => {
-                const list = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
-                const tagsMap = new Map();
-                list.forEach((q) => {
-                  (q.tags || []).forEach((tag) => {
-                    const id = tag.id || tag;
-                    if (id) {
-                      tagsMap.set(id, typeof tag === 'object' ? tag : { id, name: id });
-                    }
-                  });
-                });
-                return Array.from(tagsMap.values());
-              }, [quotesData])}
+                          if (openActionMenu?.id === row.id) {
+                            setOpenActionMenu(null);
+                          } else {
+                            setOpenActionMenu({
+                              id: row.id,
+                              triggerRect,
+                              align: 'end',
+                            });
+                          }
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))]'}`}
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                    </div>
+                  ),
+                },
+              ]}
             />
           </div>
         </div>
-      </FilterDrawer>
+
+        {openActionMenu && (
+          <ActionMenuPortal
+            isOpen={!!openActionMenu}
+            onClose={() => setOpenActionMenu(null)}
+            triggerRect={openActionMenu.triggerRect}
+            align="end"
+          >
+            {(() => {
+              if (!openActionMenu?.id) return null;
+              const row = filteredQuotes.find((q) => q.id === openActionMenu.id);
+              if (!row) return null;
+
+              return (
+                <>
+                  <button
+                    onClick={() => {
+                      router.push(`/quotes/${row.id}`);
+                      setOpenActionMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))] rounded-md transition-colors"
+                  >
+                    <Eye size={14} /> View Details
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      router.push(`/quotes/${row.id}?edit=true`);
+                      setOpenActionMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))] rounded-md transition-colors"
+                  >
+                    <Edit size={14} /> Edit Quote
+                  </button>
+
+                  {row.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          handleApprove(row);
+                          setOpenActionMenu(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-success))]/5 hover:text-[rgb(var(--color-success))] rounded-md transition-colors"
+                      >
+                        <CheckCircle size={14} /> Approve Quote
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleReject(row);
+                          setOpenActionMenu(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-error))]/5 hover:text-[rgb(var(--color-error))] rounded-md transition-colors"
+                      >
+                        <X size={14} /> Reject Quote
+                      </button>
+                    </>
+                  )}
+
+                  {row.status === 'approved' && (
+                    <button
+                      onClick={() => {
+                        handleMarkSold(row);
+                        setOpenActionMenu(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-info))]/5 hover:text-[rgb(var(--color-info))] rounded-md transition-colors"
+                    >
+                      <DollarSign size={14} /> Mark as Sold
+                    </button>
+                  )}
+
+                  {(row.status === 'rejected' || row.status === 'expired') && (
+                    <button
+                      onClick={() => {
+                        handleReopen(row);
+                        setOpenActionMenu(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-warning))]/5 hover:text-[rgb(var(--color-warning))] rounded-md transition-colors"
+                    >
+                      <RotateCcw size={14} /> Reopen Quote
+                    </button>
+                  )}
+
+                  <div className="h-px bg-[rgb(var(--color-border))] my-1"></div>
+
+                  <button
+                    onClick={() => {
+                      handleArchive(row.id);
+                      setOpenActionMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5 rounded-md transition-colors"
+                  >
+                    <Archive size={14} /> Archive
+                  </button>
+                </>
+              );
+            })()}
+          </ActionMenuPortal>
+        )}
+
+        <FilterDrawer
+          isOpen={isFilterOpen}
+          onClose={() => setIsFilterOpen(false)}
+          onReset={() =>
+            setTempFilters({
+              status: '',
+              minPrice: '',
+              maxPrice: '',
+              dateStart: '',
+              dateEnd: '',
+              tags: [],
+            })
+          }
+          onApply={() => {
+            setFilters(tempFilters);
+            setIsFilterOpen(false);
+          }}
+        >
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Status</h3>
+              <select
+                value={tempFilters.status}
+                onChange={(e) => setTempFilters((prev) => ({ ...prev, status: e.target.value }))}
+                className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
+              >
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Price Range</h3>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={tempFilters.minPrice}
+                    onChange={(e) =>
+                      setTempFilters((prev) => ({ ...prev, minPrice: e.target.value }))
+                    }
+                    className="w-full pl-7 pr-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
+                  />
+                </div>
+                <span className="text-[rgb(var(--color-text-muted))]">-</span>
+                <div className="flex-1 relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={tempFilters.maxPrice}
+                    onChange={(e) =>
+                      setTempFilters((prev) => ({ ...prev, maxPrice: e.target.value }))
+                    }
+                    className="w-full pl-7 pr-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Date Range</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-[rgb(var(--color-text-muted))] font-medium">
+                    Start Date
+                  </label>
+                  <CustomDateTimePicker
+                    value={tempFilters.dateStart}
+                    onChange={(val) => setTempFilters((prev) => ({ ...prev, dateStart: val }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-[rgb(var(--color-text-muted))] font-medium">
+                    End Date
+                  </label>
+                  <CustomDateTimePicker
+                    value={tempFilters.dateEnd}
+                    onChange={(val) => setTempFilters((prev) => ({ ...prev, dateEnd: val }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <TagOptions quotesData={quotesData} filters={tempFilters} setFilters={setTempFilters} />
+          </div>
+        </FilterDrawer>
+      </div>
+    );
+  };
+}
+
+// Helper component to handle memoization correctly
+function TagOptions({ quotesData, filters, setFilters }) {
+  const options = useMemo(() => {
+    const list = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
+    const tagsMap = new Map();
+    list.forEach((q) => {
+      (q.tags || []).forEach((tag) => {
+        const id = tag.id || tag;
+        if (id) {
+          const existing = tagsMap.get(id);
+          if (!existing || typeof tag === 'object') {
+            tagsMap.set(id, typeof tag === 'object' ? tag : { id, name: id });
+          }
+        }
+      });
+    });
+    return Array.from(tagsMap.values());
+  }, [quotesData]);
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Tags</h3>
+      <TagFilter
+        selectedTags={filters.tags || []}
+        onChange={(tags) => setFilters((prev) => ({ ...prev, tags }))}
+        type="quote"
+        options={options}
+      />
     </div>
   );
 }

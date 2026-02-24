@@ -295,7 +295,7 @@ const DataTable = ({
 
   return (
     <div className={`w-full flex flex-col gap-4 ${className}`}>
-      <div className="rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] overflow-hidden shadow-sm">
+      <div className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] overflow-hidden shadow-sm">
         {/* Unified Control Panel Header - Improved Responsiveness */}
         <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 p-4 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))/0.02]">
           {/* Search Container - takes priority in width */}

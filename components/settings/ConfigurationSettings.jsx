@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, Shield, UserPlus, ShieldCheck, Save } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../../context/AuthContext';
+import securityService from '../../services/securityService';
 
 export default function ConfigurationSettings() {
   const { user } = useAuth();
@@ -14,12 +15,20 @@ export default function ConfigurationSettings() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('support_config');
-      const config = saved ? JSON.parse(saved) : { dealer2FA: false, enforce2FA: false };
-      setInitialConfig(config);
-      setSupportConfig(config);
-    }
+    const fetchConfig = async () => {
+      try {
+        const settings = await securityService.getSettings();
+        const config = {
+          dealer2FA: settings.enforce_dealer_2fa || false,
+          enforce2FA: settings.enforce_admin_2fa || false,
+        };
+        setInitialConfig(config);
+        setSupportConfig(config);
+      } catch (error) {
+        console.error('Failed to fetch security config', error);
+      }
+    };
+    fetchConfig();
   }, []);
 
   useEffect(() => {
@@ -37,18 +46,18 @@ export default function ConfigurationSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Simulate API call (replace with actual API call)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await securityService.updateSettings({
+        enforce_dealer_2fa: supportConfig.dealer2FA,
+        enforce_admin_2fa: supportConfig.enforce2FA,
+      });
 
-      // Save to localStorage
-      localStorage.setItem('support_config', JSON.stringify(supportConfig));
       setInitialConfig(supportConfig);
       setHasChanges(false);
 
       Swal.fire({
         icon: 'success',
         title: 'Settings Saved',
-        text: '2FA enforcement settings have been updated.',
+        text: '2FA enforcement settings have been updated on the server.',
         timer: 2000,
         showConfirmButton: false,
         toast: true,
