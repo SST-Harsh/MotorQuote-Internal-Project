@@ -169,7 +169,7 @@ const UploadDropzone = ({
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         className={`
-                    relative border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer text-center
+                    relative border-2 border-dashed rounded-xl p-6 transition-all cursor-pointer text-center
                     ${
                       isDragging
                         ? 'border-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary))/0.05]'

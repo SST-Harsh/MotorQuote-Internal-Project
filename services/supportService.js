@@ -25,6 +25,10 @@ const supportService = {
     const response = await api.put(`/support/tickets/${id}/status`, statusData);
     return response.data;
   },
+  deleteTicket: async (id) => {
+    const response = await api.delete(`/support/tickets/${id}`);
+    return response.data;
+  },
 
   // 4. Add Ticket Response (Public/User) - POST /support/tickets/:id/responses
   addResponse: async (id, responseData) => {

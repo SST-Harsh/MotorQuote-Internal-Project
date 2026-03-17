@@ -2,10 +2,10 @@ import Loader from '@/components/common/Loader';
 
 export default function Loading() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0B0F19] to-[#1a1f35]">
+    <div className="min-h-screen flex items-center justify-center bg-[rgb(var(--color-background))]">
       <div className="text-center">
         <Loader />
-        <p className="mt-4 text-white/70 text-sm">Authenticating...</p>
+        <p className="mt-4 text-[rgb(var(--color-text-muted))] text-sm">Authenticating...</p>
       </div>
     </div>
   );

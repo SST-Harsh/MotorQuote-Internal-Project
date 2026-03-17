@@ -10,6 +10,7 @@ import { showSuccess, showWarning } from '../utils/toast';
 import { jwtDecode } from 'jwt-decode';
 import { logAuditEntry } from '../utils/auditLogger';
 import { normalizeRole } from '../utils/roleUtils';
+import Swal from 'sweetalert2';
 
 const AuthContext = createContext();
 
@@ -95,7 +96,7 @@ export const AuthProvider = ({ children }) => {
       // Call backend social login endpoint
       const resData = await authService.socialLogin(provider, idToken, accessToken);
 
-      if (resData.requiresTwoFactor || resData.requires_two_factor || resData.requiresMFA) {
+      if (resData.requiresTwoFactor || resData.requires_two_factor) {
         sessionStorage.setItem('tempToken', resData.tempToken || resData.temp_token);
 
         if (resData.otp || resData.code) {
@@ -104,9 +105,8 @@ export const AuthProvider = ({ children }) => {
         return { success: true, requires2FA: true };
       }
 
-      const token = resData.token || resData.accessToken;
-      if (token) {
-        const { expiresAt } = resData;
+      if (resData.token) {
+        const { token, expiresAt } = resData;
 
         const decoded = jwtDecode(token);
 
@@ -183,6 +183,59 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const logout = useCallback(
+    async (reason = 'user') => {
+      // 0. Get the token BEFORE clearing it
+      const token = localStorage.getItem('authToken');
+
+      // 1. Immediate Local State & Cookie Cleanup
+      Cookies.remove('authToken');
+      Cookies.remove('role');
+      localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('authTokenExpiresAt');
+      localStorage.removeItem('tokenType');
+      localStorage.removeItem('impersonationData');
+      localStorage.removeItem('user_preferences');
+      sessionStorage.removeItem('tempToken');
+
+      const oldUser = user;
+      setIsImpersonating(false);
+      setImpersonationData(null);
+      setUser(null);
+
+      // 2. Immediate Redirect to Login
+      router.push('/login');
+
+      // 3. Show Toast Notification
+      const isExpired = reason === 'expired';
+      const isSuspended = reason === 'suspended';
+
+      if (isSuspended) {
+        showError(
+          'Account Suspended',
+          'Your account has been suspended by an administrator. You have been logged out.',
+          5000
+        );
+      } else if (isExpired) {
+        showWarning('Session Expired', 'Your session has expired. Please log in again.', 3000);
+      } else {
+        showSuccess('Logged Out', 'See you soon!', 1500);
+      }
+
+      // 4. Background Server-side Logout (don't block the UI)
+      if (oldUser) {
+        let auditReason = 'User Logged Out Manually';
+        if (reason === 'expired') auditReason = 'Session Expired - Auto Logout';
+        if (reason === 'suspended') auditReason = 'Account Suspended - Auto Logout';
+        logAuditEntry('Logout', oldUser, auditReason, 'Info', 'Auth');
+
+        authService.logout(token).catch((e) => console.error('Logout server error', e));
+      }
+    },
+    [router, user]
+  );
+
   const login = useCallback(async (email, password, rememberMe = false) => {
     try {
       // Use authService.login instead of direct api.post
@@ -190,7 +243,7 @@ export const AuthProvider = ({ children }) => {
 
       // const resData = response.data; // authService returns response.data directly
 
-      if (resData.requiresTwoFactor || resData.requires_two_factor || resData.requiresMFA) {
+      if (resData.requiresTwoFactor || resData.requires_two_factor) {
         sessionStorage.setItem('tempToken', resData.tempToken || resData.temp_token);
 
         if (resData.otp || resData.code) {
@@ -199,9 +252,8 @@ export const AuthProvider = ({ children }) => {
         return { success: true, requires2FA: true };
       }
 
-      const token = resData.token || resData.accessToken;
-      if (token) {
-        const { expiresAt } = resData;
+      if (resData.token) {
+        const { token, expiresAt } = resData;
 
         const decoded = jwtDecode(token);
 
@@ -264,107 +316,110 @@ export const AuthProvider = ({ children }) => {
         'Critical',
         'Auth'
       );
-      const backendMessage =
-        error.response?.data?.message || error.message || 'An unexpected error occurred';
-      throw new Error(backendMessage);
+
+      const resData = error.response?.data;
+      const status = error.response?.status;
+      const backendMessage = resData?.message || error.message || 'An unexpected error occurred';
+
+      // Extremely robust check for suspension
+      const isSuspended =
+        status === 403 ||
+        resData?.status === 'suspended' ||
+        resData?.suspended === true ||
+        backendMessage.toLowerCase().includes('suspended') ||
+        backendMessage.toLowerCase().includes('account is inactive') ||
+        backendMessage.toLowerCase().includes('access restricted');
+
+      const suspensionReason =
+        resData?.suspension_reason ||
+        resData?.suspensionReason ||
+        resData?.suspend_reason ||
+        resData?.reason ||
+        resData?.suspension_message;
+
+      const finalError = new Error(backendMessage);
+      if (isSuspended) {
+        finalError.isSuspended = true;
+        finalError.suspensionReason = suspensionReason;
+      }
+
+      throw finalError;
     }
   }, []);
 
-  const logout = useCallback(
-    async (reason = 'user') => {
-      if (user) {
-        logAuditEntry(
-          'Logout',
-          user,
-          reason === 'expired' ? 'Session Expired - Auto Logout' : 'User Logged Out Manually',
-          'Info',
-          'Auth'
-        );
-      }
+  // Centralized session sync (Permissions + Profile Data)
+  const syncSession = useCallback(async () => {
+    if (!user || isImpersonating) return;
 
-      let backendMessage = 'See you soon!';
-      try {
-        const resData = await authService.logout();
-        if (resData && resData.message) {
-          backendMessage = resData.message;
-        }
-      } catch (e) {
-        console.error('Logout server error', e);
-      }
+    try {
+      const freshProfile = await authService.getProfile();
+      const backendUser = freshProfile.user || freshProfile;
 
-      const isExpired = reason === 'expired';
+      if (backendUser) {
+        const roleName = normalizeRole(backendUser.role);
+        const freshAvatar = backendUser.profile_picture || backendUser.avatar;
 
-      // Use toast utility
-      if (isExpired) {
-        showWarning('Session Expired', 'Your session has expired. Please log in again.', 3000);
-      } else {
-        showSuccess('Logged Out', backendMessage, 1500);
-      }
+        const updatedUser = {
+          ...user,
+          ...backendUser,
+          role: roleName,
+          roleDetails: backendUser.role,
+          profile_picture: freshAvatar || user.profile_picture,
+          avatar: freshAvatar || user.avatar,
+        };
 
-      // Remove cookies
-      Cookies.remove('authToken');
-      Cookies.remove('role');
+        // Comparison to avoid redundant state updates
+        const oldState = JSON.stringify({ p: user.permissions, r: user.role, a: user.avatar });
+        const newState = JSON.stringify({
+          p: backendUser.permissions,
+          r: roleName,
+          a: freshAvatar,
+        });
 
-      // Remove localStorage items
-      localStorage.removeItem('user');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('authTokenExpiresAt');
-      localStorage.removeItem('tokenType');
-      localStorage.removeItem('impersonationData');
-      sessionStorage.removeItem('tempToken');
-
-      setIsImpersonating(false);
-      setImpersonationData(null);
-      setUser(null);
-      router.push('/login');
-    },
-    [router, user]
-  );
-
-  useEffect(() => {
-    if (!user) return;
-
-    // Fetch fresh profile image to ensure Sidebar is up to date
-    const refreshProfileImage = async () => {
-      try {
-        const imageResponse = await userService.getProfileImage();
-        const freshAvatar =
-          imageResponse?.profile_picture || imageResponse?.avatar || imageResponse?.url;
-
-        if (freshAvatar && freshAvatar !== user.profile_picture && freshAvatar !== user.avatar) {
-          const updatedUser = {
-            ...user,
-            profile_picture: freshAvatar,
-            avatar: freshAvatar, // Maintain backward compatibility if needed
-          };
+        if (oldState !== newState) {
           setUser(updatedUser);
           localStorage.setItem('user', JSON.stringify(updatedUser));
         }
-      } catch (error) {
-        console.error('Failed to refresh profile image', error);
       }
-    };
+    } catch (err) {
+      console.error('Session sync failed:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        const msg = err.response?.data?.message || '';
+        const suspended =
+          msg.toLowerCase().includes('suspended') || msg.toLowerCase().includes('inactive');
+        logout(suspended ? 'suspended' : 'expired');
+      }
+    }
+  }, [user?.id, isImpersonating, logout]);
 
-    // Run once on mount (per user session)
-    refreshProfileImage();
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Initial sync on mount/login
+    syncSession();
 
     const checkTokenExpiry = () => {
       const expiresAt = localStorage.getItem('authTokenExpiresAt');
       if (!expiresAt) return;
-
-      const expiryTime = new Date(expiresAt).getTime();
-      const currentTime = Date.now();
-      const timeLeft = expiryTime - currentTime;
-
-      if (timeLeft <= 0) {
+      if (new Date(expiresAt).getTime() <= Date.now()) {
         logout('expired');
-        return;
       }
     };
 
-    const intervalId = setInterval(checkTokenExpiry, 5000);
-    return () => clearInterval(intervalId);
-  }, [user?.id]);
+    const expiryInterval = setInterval(checkTokenExpiry, 5000);
+    const syncInterval = setInterval(syncSession, 60 * 1000); // Periodic sync every 60s
+
+    const handleGlobalSync = () => syncSession();
+    window.addEventListener('auth:refresh-permissions', handleGlobalSync);
+    window.addEventListener('focus', handleGlobalSync);
+
+    return () => {
+      clearInterval(expiryInterval);
+      clearInterval(syncInterval);
+      window.removeEventListener('auth:refresh-permissions', handleGlobalSync);
+      window.removeEventListener('focus', handleGlobalSync);
+    };
+  }, [user?.id, syncSession, logout]);
 
   const updateProfile = useCallback(
     (updates) => {
@@ -392,23 +447,28 @@ export const AuthProvider = ({ children }) => {
     [user]
   );
 
-  // Impersonation methods
+  // Shared helper for cleaning up impersonation state
+  const clearImpersonationState = useCallback(() => {
+    localStorage.removeItem('impersonationData');
+    localStorage.removeItem('tokenType');
+    setIsImpersonating(false);
+    setImpersonationData(null);
+  }, []);
+
   const startImpersonation = useCallback(
     async (userId) => {
       try {
         const response = await impersonationService.startImpersonation(userId);
-
         const data = response.success && response.data ? response.data : response;
 
         if (data && data.token) {
-          const { token, refresh_token, token_type, impersonated_user, original_admin } = data;
+          const { token, refresh_token, impersonated_user, original_admin } = data;
+          const normalizedRole = normalizeRole(impersonated_user.role);
 
-          // Store impersonation token
           localStorage.setItem('authToken', token);
-          localStorage.setItem('tokenType', 'impersonation'); // Force 'impersonation' for detection on refresh
-          localStorage.setItem('refreshToken', refresh_token);
+          localStorage.setItem('tokenType', 'impersonation');
+          if (refresh_token) localStorage.setItem('refreshToken', refresh_token);
 
-          // Store impersonation context
           const impData = {
             impersonated_user,
             original_admin,
@@ -416,33 +476,28 @@ export const AuthProvider = ({ children }) => {
           };
           localStorage.setItem('impersonationData', JSON.stringify(impData));
 
-          // Update cookies
           Cookies.set('authToken', token, { expires: 1 });
-          Cookies.set('role', impersonated_user.role, { expires: 1 });
+          Cookies.set('role', normalizedRole, { expires: 1 });
 
-          // Update auth user in localStorage to satisfy direct reads in other components
           const normalizedImpersonatedUser = {
             ...impersonated_user,
-            role: normalizeRole(impersonated_user.role),
+            role: normalizedRole,
           };
           localStorage.setItem('user', JSON.stringify(normalizedImpersonatedUser));
 
-          // Update expiry time to prevent immediate logout if admin was old
-          const defaultDuration = 3600 * 1000; // 1 hour for impersonation
-          const expiryTime = new Date(Date.now() + defaultDuration).toISOString();
+          const expiryTime = new Date(Date.now() + 3600 * 1000).toISOString();
           localStorage.setItem('authTokenExpiresAt', expiryTime);
 
-          // Update state
           setIsImpersonating(true);
           setImpersonationData(impData);
           setUser(normalizedImpersonatedUser);
 
           showSuccess('Impersonation Started', `Now viewing as ${impersonated_user.email}`);
-
           router.push('/dashboard');
           router.refresh();
-
           return { success: true };
+        } else {
+          throw new Error('Impersonation response did not include a valid token');
         }
       } catch (error) {
         console.error('Impersonation start failed:', error);
@@ -457,56 +512,52 @@ export const AuthProvider = ({ children }) => {
   const exitImpersonation = useCallback(async () => {
     try {
       const response = await impersonationService.exitImpersonation();
-
       const data = response.success && response.data ? response.data : response;
 
       if (data && data.token) {
         const { token, refresh_token, token_type, user: adminUser } = data;
+        const normalizedRole = normalizeRole(adminUser.role);
 
-        // Restore admin token
         localStorage.setItem('authToken', token);
         localStorage.setItem('tokenType', token_type || 'Bearer');
-        localStorage.setItem('refreshToken', refresh_token);
+        if (refresh_token) localStorage.setItem('refreshToken', refresh_token);
 
-        // Clear impersonation data
-        localStorage.removeItem('impersonationData');
-
-        // Update cookies
+        clearImpersonationState();
         Cookies.set('authToken', token, { expires: 7 });
-        Cookies.set('role', adminUser.role, { expires: 7 });
+        Cookies.set('role', normalizedRole, { expires: 7 });
 
-        // Restore admin user in localStorage
-        const normalizedAdminUser = {
-          ...adminUser,
-          role: normalizeRole(adminUser.role),
-        };
+        const normalizedAdminUser = { ...adminUser, role: normalizedRole };
         localStorage.setItem('user', JSON.stringify(normalizedAdminUser));
 
-        // Refresh expiry time for admin session
-        const adminDuration = 7 * 24 * 3600 * 1000; // 7 days
-        const adminExpiryTime = new Date(Date.now() + adminDuration).toISOString();
+        const adminExpiryTime = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
         localStorage.setItem('authTokenExpiresAt', adminExpiryTime);
 
-        // Update state
-        setIsImpersonating(false);
-        setImpersonationData(null);
         setUser(normalizedAdminUser);
-
         showSuccess('Impersonation Ended', 'Returned to admin session');
-
-        // Redirect to users page
         router.push('/users');
         router.refresh();
-
         return { success: true };
+      } else {
+        throw new Error('Exit impersonation response did not include a valid token');
       }
     } catch (error) {
       console.error('Impersonation exit failed:', error);
-      const message = error.response?.data?.message || 'Failed to exit impersonation';
-      showWarning('Exit Failed', message);
+
+      // If we're here, the API failed (likely 401). We MUST clean up local state anyway
+      // to allow the user to escape the impersonation loop.
+      clearImpersonationState();
+      setUser(null);
+      Cookies.remove('authToken');
+      Cookies.remove('role');
+
+      const message = error.response?.data?.message || 'Failed to exit impersonation smoothly';
+      showWarning('Session Reset', message);
+
+      router.push('/login');
+      router.refresh();
       throw error;
     }
-  }, [router]);
+  }, [router, clearImpersonationState]);
 
   const authValue = useMemo(
     () => ({
@@ -514,9 +565,9 @@ export const AuthProvider = ({ children }) => {
       login,
       socialLogin,
       logout,
-      updateProfile,
       isImpersonating,
       impersonationData,
+      updateProfile,
       startImpersonation,
       exitImpersonation,
     }),
@@ -525,9 +576,9 @@ export const AuthProvider = ({ children }) => {
       login,
       socialLogin,
       logout,
-      updateProfile,
       isImpersonating,
       impersonationData,
+      updateProfile,
       startImpersonation,
       exitImpersonation,
     ]

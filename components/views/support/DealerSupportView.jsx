@@ -31,6 +31,7 @@ import {
   Edit,
 } from 'lucide-react';
 import Loader from '@/components/common/Loader';
+import Input from '@/components/common/Input';
 import StatCard from '@/components/common/StatCard';
 import Swal from 'sweetalert2';
 import {
@@ -45,11 +46,16 @@ import {
 import supportService from '@/services/supportService';
 import TabNavigation from '@/components/common/TabNavigation';
 import { useAuth } from '@/context/AuthContext';
+import { useConfig } from '@/context/ConfigContext';
 import PageHeader from '@/components/common/PageHeader';
 import FormModal from '@/components/common/FormModal';
+import { useSearchParams } from 'next/navigation';
 import * as yup from 'yup';
 import LinkifiedText from '@/components/common/LinkifiedText';
 import { formatDate } from '@/utils/i18n';
+import { X } from 'lucide-react';
+import { canManageTickets, canViewTickets } from '@/utils/roleUtils';
+import AccessDenied from '@/components/common/AccessDenied';
 
 const ticketSchema = yup.object().shape({
   subject: yup.string().required('Subject is required'),
@@ -75,7 +81,7 @@ const ticketFields = [
     type: 'select',
     icon: Tag,
     options: [
-      { value: '', label: 'Select Category' },
+      { value: '', label: 'Select Category', disabled: true, hidden: true },
       { value: 'technical', label: 'Technical Issue' },
       { value: 'question', label: 'Question' },
       { value: 'billing', label: 'Billing' },
@@ -89,7 +95,7 @@ const ticketFields = [
     type: 'select',
     icon: AlertCircle,
     options: [
-      { value: '', label: 'Select Priority' },
+      { value: '', label: 'Select Priority', disabled: true, hidden: true },
       { value: 'low', label: 'Low - General Inquiry' },
       { value: 'medium', label: 'Medium - Standard Issue' },
       { value: 'high', label: 'High - Urgent Attention' },
@@ -106,7 +112,10 @@ const ticketFields = [
 ];
 
 export default function DealerSupportView() {
+  const { config } = useConfig();
+  const { branding } = config;
   const { user } = useAuth();
+  const hasTicketPermission = canManageTickets(user);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [tickets, setTickets] = useState([]);
   const [stats, setStats] = useState([]);
@@ -122,6 +131,21 @@ export default function DealerSupportView() {
   const [activityTrends, setActivityTrends] = useState([]);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [submittingTicket, setSubmittingTicket] = useState(false);
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
+  const [recentlyChangedIds, setRecentlyChangedIds] = useState(new Set());
+
+  const normalizeTicket = useCallback(
+    (t) => ({
+      ...t,
+      id: t.id?.toString(),
+      status: t.status || 'open',
+      priority: t.priority || 'medium',
+      subject: t.subject || t.title || 'No Subject',
+      date: t.date || (t.created_at ? formatDate(t.created_at) : 'N/A'),
+    }),
+    []
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -138,14 +162,7 @@ export default function DealerSupportView() {
       const rawTickets = Array.isArray(ticketsData)
         ? ticketsData
         : ticketsData.data?.list || ticketsData.data?.tickets || ticketsData.list || [];
-      const normalizedTickets = rawTickets.map((t) => ({
-        ...t,
-        id: t.id?.toString(),
-        status: t.status || 'open',
-        priority: t.priority || 'medium',
-        subject: t.subject || t.title || 'No Subject',
-        date: t.date || (t.created_at ? formatDate(t.created_at) : 'N/A'),
-      }));
+      const normalizedTickets = rawTickets.map((t) => normalizeTicket(t));
       setTickets(normalizedTickets);
 
       const summary = ticketsData.data?.summary || {
@@ -153,7 +170,9 @@ export default function DealerSupportView() {
         open: normalizedTickets.filter((t) => t.status?.toLowerCase() === 'open').length,
         in_progress: normalizedTickets.filter((t) => t.status?.toLowerCase() === 'in_progress')
           .length,
-        resolved: normalizedTickets.filter((t) => t.status?.toLowerCase() === 'resolved').length,
+        resolved: normalizedTickets.filter(
+          (t) => t.status?.toLowerCase() === 'resolved' || t.status?.toLowerCase() === 'closed'
+        ).length,
       };
 
       // Calculate Trends for last 7 days
@@ -180,23 +199,23 @@ export default function DealerSupportView() {
 
       const mappedStats = [
         {
-          title: 'My Open Tickets',
-          value: summary.open || 0,
-          trend: { positive: true, label: '+0' },
+          title: 'Total Tickets',
+          value: summary.total_tickets || normalizedTickets.length,
+          trend: { positive: true, label: 'Lifetime' },
           accent: 'rgb(var(--color-primary))',
           icon: <Ticket size={24} />,
         },
         {
-          title: 'Pending Response',
-          value: summary.in_progress || 0,
-          trend: { positive: false, label: '0' },
+          title: 'Open Tickets',
+          value: summary.open || 0,
+          trend: { positive: true, label: 'Active' },
           accent: 'rgb(var(--color-warning))',
           icon: <Clock size={24} />,
         },
         {
-          title: 'Resolved This Week',
+          title: 'Closed Tickets',
           value: summary.resolved || 0,
-          trend: { positive: true, label: '+0' },
+          trend: { positive: true, label: 'Resolved' },
           accent: 'rgb(var(--color-success))',
           icon: <CheckCircle size={24} />,
         },
@@ -227,11 +246,53 @@ export default function DealerSupportView() {
     } finally {
       setLoading(false);
     }
-  }, [ticketFilter]);
+  }, [ticketFilter, normalizeTicket]);
 
   useEffect(() => {
     loadData();
   }, [loadData, ticketFilter]); // Refetch when filter changes
+
+  const handleTicketSelect = useCallback(
+    async (ticket) => {
+      try {
+        setSelectedTicket(ticket);
+        setReplyText('');
+        const fullTicket = await supportService.getTicketById(ticket.id);
+        const data = normalizeTicket(fullTicket?.data || fullTicket);
+        setSelectedTicket(data);
+      } catch (error) {
+        console.error('Failed to load ticket details', error);
+      }
+    },
+    [setSelectedTicket, setReplyText, normalizeTicket]
+  );
+
+  // Handle highlightId
+  useEffect(() => {
+    if (highlightId && tickets.length > 0) {
+      const ticket = tickets.find((t) => t.id === highlightId);
+      if (ticket) {
+        handleTicketSelect(ticket);
+        setActiveTab('tickets');
+        // Optional: scroll to the ticket element if needed
+        setTimeout(() => {
+          const element = document.getElementById(`ticket-${highlightId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setRecentlyChangedIds((prev) => new Set(prev).add(highlightId));
+            // Clear highlight after some time
+            setTimeout(() => {
+              setRecentlyChangedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(highlightId);
+                return next;
+              });
+            }, 2000);
+          }
+        }, 500);
+      }
+    }
+  }, [highlightId, tickets, handleTicketSelect]);
 
   // Client-side search and filtering for documentation
   const filteredDocs = useMemo(() => {
@@ -247,48 +308,31 @@ export default function DealerSupportView() {
   }, [docs, docSearchQuery]);
 
   const handleCloseTicket = async (ticketId) => {
-    const { value: formValues } = await Swal.fire({
-      title: 'Close Ticket',
-      text: 'How would you rate our support?',
-      input: 'range',
-      inputLabel: 'Rating (1-5)',
-      inputAttributes: {
-        min: 1,
-        max: 5,
-        step: 1,
-      },
-      inputValue: 5,
-      html: `
-                <div class="mt-4">
-                    <textarea id="swal-feedback" class="swal2-textarea" placeholder="Optional feedback..."></textarea>
-                </div>
-            `,
+    Swal.fire({
+      title: 'Mark as Closed?',
+      text: 'Set status to closed?',
+      icon: 'question',
       showCancelButton: true,
       confirmButtonColor: 'rgb(var(--color-primary))',
-      confirmButtonText: 'Yes, Close Ticket',
-      preConfirm: () => {
-        return {
-          rating: Swal.getPopup().querySelector('.swal2-input-label').nextElementSibling.value,
-          feedback: document.getElementById('swal-feedback').value,
-        };
-      },
-    });
+      confirmButtonText: 'Confirm',
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          await supportService.updateTicketStatus(ticketId, { status: 'closed' });
 
-    if (formValues) {
-      try {
-        await supportService.closeTicket(ticketId, formValues);
+          setTickets(tickets.map((t) => (t.id !== ticketId ? t : { ...t, status: 'closed' })));
 
-        setTickets(tickets.map((t) => (t.id !== ticketId ? t : { ...t, status: 'closed' })));
-
-        if (selectedTicket?.id === ticketId) {
-          setSelectedTicket({ ...selectedTicket, status: 'closed' });
+          if (selectedTicket?.id === ticketId) {
+            setSelectedTicket({ ...selectedTicket, status: 'closed' });
+          }
+          setRecentlyChangedIds((prev) => new Set(prev).add(ticketId.toString()));
+          Swal.fire('Updated!', 'Ticket updated successfully.', 'success');
+        } catch (error) {
+          console.error('Failed to close ticket', error);
+          Swal.fire('Error', 'Could not close ticket', 'error');
         }
-        Swal.fire('Closed!', 'Thank you for your feedback.', 'success');
-      } catch (error) {
-        console.error('Failed to close ticket', error);
-        Swal.fire('Error', 'Could not close ticket', 'error');
       }
-    }
+    });
   };
 
   const handleCreateTicket = () => {
@@ -321,16 +365,6 @@ export default function DealerSupportView() {
     }
   };
 
-  const handleTicketSelect = async (ticket) => {
-    try {
-      setSelectedTicket(ticket); // Set immediately for UI responsiveness
-      const fullTicket = await supportService.getTicketById(ticket.id);
-      setSelectedTicket(fullTicket?.data || fullTicket);
-    } catch (error) {
-      console.error('Failed to fetch ticket details', error);
-    }
-  };
-
   const handleSendResponse = async () => {
     if (!replyText.trim() || !selectedTicket) return;
     try {
@@ -341,7 +375,8 @@ export default function DealerSupportView() {
 
       // Refresh ticket data
       const updatedTicket = await supportService.getTicketById(selectedTicket.id);
-      setSelectedTicket(updatedTicket?.data || updatedTicket);
+      const data = normalizeTicket(updatedTicket?.data || updatedTicket);
+      setSelectedTicket(data);
       setReplyText('');
       Swal.fire({
         toast: true,
@@ -398,24 +433,26 @@ export default function DealerSupportView() {
       ? stats
       : [
           {
-            title: 'Open Tickets',
-            value: tickets.filter((t) => t.status === 'open').length,
-            trend: { positive: true, label: '+2' },
-            accent: '#3b82f6',
+            title: 'Total Tickets',
+            value: tickets.length,
+            trend: { positive: true, label: 'Lifetime' },
+            accent: 'rgb(var(--color-primary))',
             icon: <Ticket size={24} />,
           },
           {
-            title: 'In Progress',
-            value: tickets.filter((t) => t.status === 'in_progress').length,
-            trend: { positive: false, label: '0' },
-            accent: '#f97316',
+            title: 'Open Tickets',
+            value: tickets.filter((t) => t.status?.toLowerCase() === 'open').length,
+            trend: { positive: true, label: 'Active' },
+            accent: 'rgb(var(--color-warning))',
             icon: <Clock size={24} />,
           },
           {
-            title: 'Resolved',
-            value: tickets.filter((t) => t.status === 'resolved' || t.status === 'closed').length,
-            trend: { positive: true, label: '+5' },
-            accent: '#10b981',
+            title: 'Closed Tickets',
+            value: tickets.filter(
+              (t) => t.status?.toLowerCase() === 'resolved' || t.status?.toLowerCase() === 'closed'
+            ).length,
+            trend: { positive: true, label: 'Resolved' },
+            accent: 'rgb(var(--color-success))',
             icon: <CheckCircle size={24} />,
           },
         ];
@@ -546,7 +583,12 @@ export default function DealerSupportView() {
                 </p>
                 <button
                   onClick={handleCreateTicket}
-                  className="w-full py-3 bg-[rgb(var(--color-primary))] text-white rounded-xl font-bold shadow-lg shadow-[rgb(var(--color-primary))/0.2] hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95 flex items-center justify-center gap-2"
+                  disabled={!hasTicketPermission}
+                  className={`w-full py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                    !hasTicketPermission
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200 shadow-none'
+                      : 'bg-[rgb(var(--color-primary))] text-white shadow-[rgb(var(--color-primary))/0.2] hover:bg-[rgb(var(--color-primary-dark))]'
+                  }`}
                 >
                   <Plus size={18} /> Create Ticket
                 </button>
@@ -578,303 +620,313 @@ export default function DealerSupportView() {
       )}
 
       {/* --- TICKETS --- */}
-      {activeTab === 'tickets' && (
-        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-280px)] min-h-[600px]">
-          {/* List */}
-          <div
-            className={`flex flex-col flex-1 lg:flex-none ${selectedTicket ? 'hidden lg:flex lg:w-1/3' : 'w-full lg:w-1/3'} bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl overflow-hidden shadow-sm`}
-          >
-            <div className="p-4 border-b border-[rgb(var(--color-border))] space-y-3 bg-[rgb(var(--color-background))/0.3]">
-              <div className="flex justify-between items-center">
-                <h3 className="font-bold text-[rgb(var(--color-text))]">My Tickets</h3>
-                <button
-                  onClick={handleCreateTicket}
-                  className="p-2 hover:bg-[rgb(var(--color-background))] rounded-lg text-[rgb(var(--color-primary))] transition-colors"
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]"
-                  size={16}
-                />
-                <input
-                  type="text"
-                  placeholder="Search tickets..."
-                  className="w-full bg-[rgb(var(--color-background))] pl-10 pr-4 py-2 text-xs rounded-xl border border-[rgb(var(--color-border))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] outline-none transition-all"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-2 text-[10px] overflow-x-auto no-scrollbar">
-                {['All', 'Open', 'Closed', 'Resolved'].map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setTicketFilter(filter)}
-                    className={`px-3 py-1.5 rounded-lg border font-medium whitespace-nowrap transition-colors ${ticketFilter === filter ? 'bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))]' : 'bg-[rgb(var(--color-background))] border-[rgb(var(--color-border))] hover:border-[rgb(var(--color-primary))] text-[rgb(var(--color-text-muted))]'}`}
-                  >
-                    {filter}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {(() => {
-                const filteredTickets = tickets.filter((ticket) => {
-                  const matchesFilter =
-                    ticketFilter === 'All' ||
-                    (ticketFilter === 'Open' && ticket.status?.toLowerCase() === 'open') ||
-                    (ticketFilter === 'Closed' && ticket.status?.toLowerCase() === 'closed') ||
-                    (ticketFilter === 'Resolved' && ticket.status?.toLowerCase() === 'resolved');
-
-                  const matchesSearch =
-                    !searchQuery.trim() ||
-                    ticket.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    ticket.id?.toString().toLowerCase().includes(searchQuery.toLowerCase());
-
-                  return matchesFilter && matchesSearch;
-                });
-
-                if (filteredTickets.length === 0) {
-                  return (
-                    <div className="p-8 text-center text-[rgb(var(--color-text-muted))] opacity-60">
-                      <Ticket size={40} className="mx-auto mb-4 opacity-20" />
-                      <p className="text-sm">No tickets found.</p>
-                    </div>
-                  );
-                }
-
-                return filteredTickets.map((ticket) => (
-                  <button
-                    key={ticket.id}
-                    onClick={() => handleTicketSelect(ticket)}
-                    className={`w-full text-left p-4 border-b border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-background))] transition-colors group ${selectedTicket?.id === ticket.id ? 'bg-[rgb(var(--color-primary))/0.04] border-l-4 border-l-[rgb(var(--color-primary))]' : 'border-l-4 border-l-transparent'}`}
-                  >
-                    <div className="flex justify-between items-start mb-1.5">
-                      <span className="text-xs font-mono font-bold text-[rgb(var(--color-text-muted))]">
-                        #{ticket.ticket_number || ticket.id.slice(0, 8)}
-                      </span>
-                      <span className="text-[10px] uppercase font-bold text-[rgb(var(--color-text-muted))]">
-                        {ticket.date}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-[rgb(var(--color-text))] text-sm mb-2 line-clamp-1 group-hover:text-[rgb(var(--color-primary))]">
-                      {ticket.subject}
-                    </h4>
-                    <div className="flex justify-between items-center">
-                      <PriorityBadge priority={ticket.priority} />
-                      <StatusBadge status={ticket.status} />
-                    </div>
-                  </button>
-                ));
-              })()}
-            </div>
+      {activeTab === 'tickets' &&
+        (!hasTicketPermission ? (
+          <div className="min-h-[400px] flex items-center justify-center bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl shadow-sm">
+            <AccessDenied
+              title="Ticket Management Access Denied"
+              message="You do not have the required permissions to view or manage support tickets. Please contact your administrator to enable 'Manage Tickets' permission."
+              showAction={false}
+            />
           </div>
-
-          {/* Detail */}
-          {selectedTicket ? (
-            <div className="flex-1 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl overflow-hidden flex flex-col shadow-sm">
-              <div className="p-6 border-b border-[rgb(var(--color-border))] flex justify-between items-start bg-[rgb(var(--color-background))/0.3]">
-                <div className="flex-1">
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-280px)] min-h-[600px]">
+            {/* List */}
+            <div
+              className={`flex flex-col flex-1 lg:flex-none ${selectedTicket ? 'hidden lg:flex lg:w-1/3' : 'w-full lg:w-1/3'} bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl overflow-hidden shadow-sm`}
+            >
+              <div className="p-4 border-b border-[rgb(var(--color-border))] space-y-3 bg-[rgb(var(--color-background))/0.3]">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-bold text-[rgb(var(--color-text))]">My Tickets</h3>
                   <button
-                    onClick={() => setSelectedTicket(null)}
-                    className="lg:hidden p-1 -ml-1 mb-2 text-[rgb(var(--color-text-muted))]"
+                    onClick={handleCreateTicket}
+                    className="p-2 hover:bg-[rgb(var(--color-background))] rounded-lg text-[rgb(var(--color-primary))] transition-colors"
                   >
-                    <ChevronRight className="rotate-180" size={20} />
+                    <Plus size={18} />
                   </button>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-bold text-[rgb(var(--color-text))]">
-                      {selectedTicket.subject}
-                    </h2>
-                    <StatusBadge status={selectedTicket.status} />
-                  </div>
-                  <div className="flex items-center gap-4 mt-2 text-xs text-[rgb(var(--color-text-muted))]">
-                    <span className="flex items-center gap-1.5">
-                      <Tag size={12} /> {selectedTicket.category || 'Support'}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Clock size={12} /> Created {selectedTicket.date}
-                    </span>
-                  </div>
                 </div>
-                {selectedTicket.status.toLowerCase() !== 'closed' && (
-                  <div className="relative">
+                <div className="relative">
+                  <Input
+                    type="text"
+                    placeholder="Search tickets..."
+                    icon={Search}
+                    rightIcon={searchQuery ? X : null}
+                    onRightIconClick={() => setSearchQuery('')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="mb-0 w-full"
+                    inputClassName="h-9 pl-9 pr-9"
+                  />
+                </div>
+                <div className="flex gap-2 text-[10px] overflow-x-auto no-scrollbar">
+                  {['All', 'Open', 'Closed', 'Resolved'].map((filter) => (
                     <button
-                      onClick={() =>
-                        setOpenActionMenu(
-                          openActionMenu === selectedTicket.id ? null : selectedTicket.id
-                        )
-                      }
-                      className="px-4 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-xs font-bold hover:border-[rgb(var(--color-primary))] transition-all flex items-center gap-2"
+                      key={filter}
+                      onClick={() => setTicketFilter(filter)}
+                      className={`px-3 py-1.5 rounded-lg border font-medium whitespace-nowrap transition-colors ${ticketFilter === filter ? 'bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))]' : 'bg-[rgb(var(--color-background))] border-[rgb(var(--color-border))] hover:border-[rgb(var(--color-primary))] text-[rgb(var(--color-text-muted))]'}`}
                     >
-                      Actions <ChevronDown size={14} />
+                      {filter}
                     </button>
-                    {openActionMenu === selectedTicket.id && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setOpenActionMenu(null)}
-                        ></div>
-                        <div className="absolute right-0 top-full mt-2 w-48 bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl border border-[rgb(var(--color-border))] z-20 overflow-hidden">
-                          <div className="p-1.5">
-                            <button
-                              onClick={() => handleCloseTicket(selectedTicket.id)}
-                              className="w-full text-left px-4 py-2.5 text-xs font-bold text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5 rounded-xl flex items-center gap-3"
-                            >
-                              <CheckCircle size={16} /> Resolve & Close
-                            </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {(() => {
+                  const filteredTickets = tickets.filter((ticket) => {
+                    const matchesFilter =
+                      ticketFilter === 'All' ||
+                      (ticketFilter === 'Open' && ticket.status?.toLowerCase() === 'open') ||
+                      (ticketFilter === 'Closed' && ticket.status?.toLowerCase() === 'closed') ||
+                      (ticketFilter === 'Resolved' && ticket.status?.toLowerCase() === 'resolved');
+
+                    const matchesSearch =
+                      !searchQuery.trim() ||
+                      ticket.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      ticket.id?.toString().toLowerCase().includes(searchQuery.toLowerCase());
+
+                    return matchesFilter && matchesSearch;
+                  });
+
+                  if (filteredTickets.length === 0) {
+                    return (
+                      <div className="p-8 text-center text-[rgb(var(--color-text-muted))] opacity-60">
+                        <Ticket size={40} className="mx-auto mb-4 opacity-20" />
+                        <p className="text-sm">No tickets found.</p>
+                      </div>
+                    );
+                  }
+
+                  return filteredTickets.map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      id={`ticket-${ticket.id}`}
+                      onClick={() => handleTicketSelect(ticket)}
+                      className={`w-full text-left p-4 border-b border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-background))] transition-colors group relative ${selectedTicket?.id === ticket.id ? 'bg-[rgb(var(--color-primary))/0.04] border-l-4 border-l-[rgb(var(--color-primary))]' : 'border-l-4 border-l-transparent'} ${recentlyChangedIds.has(ticket.id.toString()) ? 'bg-[rgb(var(--color-primary))/0.1] ring-2 ring-[rgb(var(--color-primary))] z-10' : ''}`}
+                    >
+                      <div className="flex justify-between items-start mb-1.5">
+                        <span className="text-xs font-mono font-bold text-[rgb(var(--color-text-muted))]">
+                          #{ticket.ticket_number || ticket.id.slice(0, 8)}
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-[rgb(var(--color-text-muted))]">
+                          {ticket.date}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-[rgb(var(--color-text))] text-sm mb-2 line-clamp-1 group-hover:text-[rgb(var(--color-primary))]">
+                        {ticket.subject}
+                      </h4>
+                      <div className="flex justify-between items-center">
+                        <PriorityBadge priority={ticket.priority} />
+                        <StatusBadge status={ticket.status} />
+                      </div>
+                    </button>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            {/* Detail */}
+            {selectedTicket ? (
+              <div className="flex-1 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl overflow-hidden flex flex-col shadow-sm">
+                <div className="p-6 border-b border-[rgb(var(--color-border))] flex justify-between items-start bg-[rgb(var(--color-background))/0.3]">
+                  <div className="flex-1">
+                    <button
+                      onClick={() => setSelectedTicket(null)}
+                      className="lg:hidden p-1 -ml-1 mb-2 text-[rgb(var(--color-text-muted))]"
+                    >
+                      <ChevronRight className="rotate-180" size={20} />
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-bold text-[rgb(var(--color-text))]">
+                        {selectedTicket.subject}
+                      </h2>
+                      <StatusBadge status={selectedTicket.status} />
+                    </div>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-[rgb(var(--color-text-muted))]">
+                      <span className="flex items-center gap-1.5">
+                        <Tag size={12} /> {selectedTicket.category || 'Support'}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <Clock size={12} /> Created {selectedTicket.date}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedTicket.status.toLowerCase() !== 'closed' && (
+                    <div className="relative">
+                      <button
+                        onClick={() =>
+                          setOpenActionMenu(
+                            openActionMenu === selectedTicket.id ? null : selectedTicket.id
+                          )
+                        }
+                        className="px-4 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-xs font-bold hover:border-[rgb(var(--color-primary))] transition-all flex items-center gap-2"
+                      >
+                        Actions <ChevronDown size={14} />
+                      </button>
+                      {openActionMenu === selectedTicket.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setOpenActionMenu(null)}
+                          ></div>
+                          <div className="absolute right-0 top-full mt-2 w-48 bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl border border-[rgb(var(--color-border))] z-20 overflow-hidden">
+                            <div className="p-1.5">
+                              <button
+                                onClick={() => handleCloseTicket(selectedTicket.id)}
+                                className="w-full text-left px-4 py-2.5 text-xs font-bold text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5 rounded-xl flex items-center gap-3"
+                              >
+                                <CheckCircle size={16} /> Resolve & Close
+                              </button>
+                            </div>
                           </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-[rgb(var(--color-background))/0.3] custom-scrollbar">
+                  {/* Customer Original Message */}
+                  <div className="flex w-full justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="flex gap-3 max-w-[85%] flex-row-reverse">
+                      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold shadow-sm bg-[rgb(var(--color-primary))] text-white">
+                        {(user?.name || 'M').charAt(0)}
+                      </div>
+                      <div className="relative p-4 rounded-2xl shadow-sm border bg-[rgb(var(--color-primary))/0.08] border-[rgb(var(--color-primary))/0.1] rounded-tr-none">
+                        <div className="flex items-center gap-3 mb-2 justify-end">
+                          <span className="text-[11px] font-bold text-[rgb(var(--color-text))] opacity-80">
+                            You (Description)
+                          </span>
+                          <span className="text-[9px] text-[rgb(var(--color-text-muted))] font-medium">
+                            {new Date(selectedTicket.created_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
                         </div>
-                      </>
-                    )}
+                        <LinkifiedText
+                          text={selectedTicket.description}
+                          className="text-sm text-[rgb(var(--color-text))] leading-relaxed break-words"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Responses */}
+                  {selectedTicket.history && selectedTicket.history.length > 0
+                    ? selectedTicket.history
+                        .filter((h) => h.action === 'RESPONSE_ADDED')
+                        .map((res, i) => {
+                          // A message is "Me" if it was sent by the ticket creator
+                          const isMe = res.user_id === selectedTicket.user_id;
+                          const isSupport = !isMe;
+
+                          return (
+                            <div
+                              key={i}
+                              className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
+                            >
+                              <div
+                                className={`flex gap-3 max-w-[80%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                              >
+                                {/* Avatar */}
+                                <div
+                                  className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold shadow-sm ${isMe ? 'bg-[rgb(var(--color-primary))] text-white' : 'bg-[rgb(var(--color-info))] text-white'}`}
+                                >
+                                  {(res.user_name || (isSupport ? 'S' : 'U')).charAt(0)}
+                                </div>
+
+                                {/* Message Bubble */}
+                                <div
+                                  className={`relative p-4 rounded-2xl shadow-sm border ${
+                                    isMe
+                                      ? 'bg-[rgb(var(--color-primary))/0.08] border-[rgb(var(--color-primary))/0.1] rounded-tr-none'
+                                      : 'bg-[rgb(var(--color-surface))] border-[rgb(var(--color-border))] rounded-tl-none'
+                                  }`}
+                                >
+                                  <div
+                                    className={`flex items-center gap-3 mb-1 ${isMe ? 'justify-end' : 'justify-start'}`}
+                                  >
+                                    <span className="text-[11px] font-bold text-[rgb(var(--color-text))] opacity-80">
+                                      {isMe ? 'You' : res.user_name || 'Support Team'}
+                                    </span>
+                                    <span className="text-[9px] text-[rgb(var(--color-text-muted))] font-medium">
+                                      {new Date(res.created_at).toLocaleTimeString([], {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </span>
+                                  </div>
+                                  <LinkifiedText
+                                    text={res.comment}
+                                    className="text-sm text-[rgb(var(--color-text))] leading-relaxed break-words"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    : null}
+                </div>
+
+                {selectedTicket.status.toLowerCase() !== 'closed' && (
+                  <div className="p-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]">
+                    <div className="flex gap-3">
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSendResponse()}
+                          placeholder="Type your response..."
+                          className="w-full bg-[rgb(var(--color-background))] pl-12 pr-14 py-3.5 rounded-2xl border border-[rgb(var(--color-border))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] outline-none text-sm shadow-inner transition-all"
+                        />
+                        <button
+                          className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] transition-colors"
+                          title="Attach File (Not yet supported)"
+                          onClick={() => document.getElementById('ticket-attachment-input').click()}
+                        >
+                          <File size={18} />
+                        </button>
+                        <input
+                          id="ticket-attachment-input"
+                          type="file"
+                          className="hidden"
+                          onChange={() =>
+                            Swal.fire(
+                              'Coming Soon',
+                              'Attachment support will be available in a future update.',
+                              'info'
+                            )
+                          }
+                        />
+                        <button
+                          onClick={handleSendResponse}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-[rgb(var(--color-primary))] text-white rounded-xl hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95 shadow-md shadow-[rgb(var(--color-primary)/0.2)]"
+                        >
+                          <Send size={18} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-[rgb(var(--color-background))/0.3] custom-scrollbar">
-                {/* Customer Original Message */}
-                <div className="flex w-full justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex gap-3 max-w-[85%] flex-row-reverse">
-                    <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold shadow-sm bg-[rgb(var(--color-primary))] text-white">
-                      {(user?.name || 'M').charAt(0)}
-                    </div>
-                    <div className="relative p-4 rounded-2xl shadow-sm border bg-[rgb(var(--color-primary))/0.08] border-[rgb(var(--color-primary))/0.1] rounded-tr-none">
-                      <div className="flex items-center gap-3 mb-2 justify-end">
-                        <span className="text-[11px] font-bold text-[rgb(var(--color-text))] opacity-80">
-                          You (Description)
-                        </span>
-                        <span className="text-[9px] text-[rgb(var(--color-text-muted))] font-medium">
-                          {new Date(selectedTicket.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      </div>
-                      <LinkifiedText
-                        text={selectedTicket.description}
-                        className="text-sm text-[rgb(var(--color-text))] leading-relaxed break-words"
-                      />
-                    </div>
-                  </div>
+            ) : (
+              <div className="hidden lg:flex flex-1 items-center justify-center bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl text-[rgb(var(--color-text-muted))] flex-col gap-6 border-dashed opacity-50">
+                <div className="w-24 h-24 bg-[rgb(var(--color-background))] rounded-full flex items-center justify-center shadow-inner">
+                  <MessageSquare size={44} className="opacity-20" />
                 </div>
-
-                {/* Responses */}
-                {selectedTicket.history && selectedTicket.history.length > 0
-                  ? selectedTicket.history
-                      .filter((h) => h.action === 'RESPONSE_ADDED')
-                      .map((res, i) => {
-                        // A message is "Me" if it was sent by the ticket creator
-                        const isMe = res.user_id === selectedTicket.user_id;
-                        const isSupport = !isMe;
-
-                        return (
-                          <div
-                            key={i}
-                            className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
-                          >
-                            <div
-                              className={`flex gap-3 max-w-[80%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                            >
-                              {/* Avatar */}
-                              <div
-                                className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold shadow-sm ${isMe ? 'bg-[rgb(var(--color-primary))] text-white' : 'bg-[rgb(var(--color-info))] text-white'}`}
-                              >
-                                {(res.user_name || (isSupport ? 'S' : 'U')).charAt(0)}
-                              </div>
-
-                              {/* Message Bubble */}
-                              <div
-                                className={`relative p-4 rounded-2xl shadow-sm border ${
-                                  isMe
-                                    ? 'bg-[rgb(var(--color-primary))/0.08] border-[rgb(var(--color-primary))/0.1] rounded-tr-none'
-                                    : 'bg-[rgb(var(--color-surface))] border-[rgb(var(--color-border))] rounded-tl-none'
-                                }`}
-                              >
-                                <div
-                                  className={`flex items-center gap-3 mb-1 ${isMe ? 'justify-end' : 'justify-start'}`}
-                                >
-                                  <span className="text-[11px] font-bold text-[rgb(var(--color-text))] opacity-80">
-                                    {isMe ? 'You' : res.user_name || 'Support Team'}
-                                  </span>
-                                  <span className="text-[9px] text-[rgb(var(--color-text-muted))] font-medium">
-                                    {new Date(res.created_at).toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </span>
-                                </div>
-                                <LinkifiedText
-                                  text={res.comment}
-                                  className="text-sm text-[rgb(var(--color-text))] leading-relaxed break-words"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                  : null}
-              </div>
-
-              {selectedTicket.status.toLowerCase() !== 'closed' && (
-                <div className="p-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]">
-                  <div className="flex gap-3">
-                    <div className="flex-1 relative">
-                      <input
-                        type="text"
-                        value={replyText}
-                        onChange={(e) => setReplyText(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendResponse()}
-                        placeholder="Type your response..."
-                        className="w-full bg-[rgb(var(--color-background))] pl-12 pr-14 py-3.5 rounded-2xl border border-[rgb(var(--color-border))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] outline-none text-sm shadow-inner transition-all"
-                      />
-                      <button
-                        className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] transition-colors"
-                        title="Attach File (Not yet supported)"
-                        onClick={() => document.getElementById('ticket-attachment-input').click()}
-                      >
-                        <File size={18} />
-                      </button>
-                      <input
-                        id="ticket-attachment-input"
-                        type="file"
-                        className="hidden"
-                        onChange={() =>
-                          Swal.fire(
-                            'Coming Soon',
-                            'Attachment support will be available in a future update.',
-                            'info'
-                          )
-                        }
-                      />
-                      <button
-                        onClick={handleSendResponse}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-[rgb(var(--color-primary))] text-white rounded-xl hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95 shadow-md shadow-[rgb(var(--color-primary)/0.2)]"
-                      >
-                        <Send size={18} />
-                      </button>
-                    </div>
-                  </div>
+                <div className="text-center">
+                  <h3 className="text-xl font-bold text-[rgb(var(--color-text))]">
+                    Manage Your Tickets
+                  </h3>
+                  <p className="text-sm mt-1">
+                    Select a ticket from the list to view its conversation history.
+                  </p>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="hidden lg:flex flex-1 items-center justify-center bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-2xl text-[rgb(var(--color-text-muted))] flex-col gap-6 border-dashed opacity-50">
-              <div className="w-24 h-24 bg-[rgb(var(--color-background))] rounded-full flex items-center justify-center shadow-inner">
-                <MessageSquare size={44} className="opacity-20" />
               </div>
-              <div className="text-center">
-                <h3 className="text-xl font-bold text-[rgb(var(--color-text))]">
-                  Manage Your Tickets
-                </h3>
-                <p className="text-sm mt-1">
-                  Select a ticket from the list to view its conversation history.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        ))}
 
       {/* --- DOCS --- */}
       {activeTab === 'docs' && (
@@ -913,17 +965,17 @@ export default function DealerSupportView() {
               </div>
             </div>
             {!viewingDoc && (
-              <div className="relative w-full md:w-96">
-                <Search
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]"
-                  size={18}
-                />
-                <input
+              <div className="w-full md:w-96">
+                <Input
                   type="text"
                   placeholder="Search help articles..."
-                  className="w-full bg-[rgb(var(--color-background))] pl-12 pr-4 py-3 rounded-2xl border border-[rgb(var(--color-border))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] outline-none transition-all shadow-sm"
+                  icon={Search}
+                  rightIcon={docSearchQuery ? X : null}
+                  onRightIconClick={() => setDocSearchQuery('')}
                   value={docSearchQuery}
                   onChange={(e) => setDocSearchQuery(e.target.value)}
+                  className="mb-0"
+                  inputClassName="!rounded-2xl border-[rgb(var(--color-border))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] shadow-sm py-3 bg-[rgb(var(--color-background))]"
                 />
               </div>
             )}
@@ -933,22 +985,19 @@ export default function DealerSupportView() {
             <div className="bg-[rgb(var(--color-surface))] rounded-3xl border border-[rgb(var(--color-border))] shadow-xl overflow-hidden">
               <div className="p-8 lg:p-12 border-b border-[rgb(var(--color-border))] bg-gradient-to-br from-[rgb(var(--color-background))] to-[rgb(var(--color-surface))]">
                 <div className="flex items-center gap-3 mb-6">
-                  <span className="px-3 py-1.5 rounded-xl bg-[rgb(var(--color-primary))/0.1] text-[rgb(var(--color-primary))] text-[10px] font-black uppercase tracking-widest">
+                  <span className="px-3 py-1.5 rounded-xl bg-[rgb(var(--color-primary))/0.1] text-[rgb(var(--color-primary))] text-[10px] font-bold uppercase tracking-widest">
                     {viewingDoc.category?.replace('_', ' ')}
                   </span>
                   <div className="flex items-center gap-1.5 text-[rgb(var(--color-text-muted))] text-xs font-bold ml-auto bg-[rgb(var(--color-surface))] px-3 py-1 rounded-full border border-[rgb(var(--color-border))] shadow-sm">
                     <Calendar size={12} /> {viewingDoc.date}
                   </div>
                 </div>
-                <h1 className="text-3xl lg:text-4xl font-black text-[rgb(var(--color-text))] mb-6 leading-tight">
+                <h1 className="text-3xl lg:text-4xl font-bold text-[rgb(var(--color-text))] mb-6 leading-tight">
                   {viewingDoc.title}
                 </h1>
                 <div className="flex flex-wrap items-center gap-6">
                   <div className="flex items-center gap-2 text-sm font-bold py-1 px-3 bg-[rgb(var(--color-primary))]/10 text-[rgb(var(--color-primary))] rounded-lg border border-[rgb(var(--color-primary))]/20">
-                    <User size={14} /> MotorQuote Support
-                  </div>
-                  <div className="flex items-center gap-2 text-sm font-bold py-1 px-3 bg-[rgb(var(--color-success))]/10 text-[rgb(var(--color-success))] rounded-lg border border-[rgb(var(--color-success))]/20">
-                    <CheckCircle size={14} /> Verified Guide
+                    <User size={14} /> {branding.appName} Support
                   </div>
                 </div>
               </div>
@@ -971,7 +1020,7 @@ export default function DealerSupportView() {
                     className="bg-[rgb(var(--color-surface))] p-6 rounded-3xl border border-[rgb(var(--color-border))] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full active:scale-[0.98]"
                   >
                     <div className="flex justify-between items-start mb-4">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary))/0.1] px-3 py-1.5 rounded-xl border border-[rgb(var(--color-primary))/0.1]">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary))/0.1] px-3 py-1.5 rounded-xl border border-[rgb(var(--color-primary))/0.1]">
                         {doc.category?.replace('_', ' ')}
                       </span>
                       <div className="p-2 transition-colors">
@@ -981,7 +1030,7 @@ export default function DealerSupportView() {
                         />
                       </div>
                     </div>
-                    <h3 className="text-lg font-black text-[rgb(var(--color-text))] mb-3 group-hover:text-[rgb(var(--color-primary))] transition-colors leading-snug">
+                    <h3 className="text-lg font-bold text-[rgb(var(--color-text))] mb-3 group-hover:text-[rgb(var(--color-primary))] transition-colors leading-snug">
                       {doc.title}
                     </h3>
                     <div className="text-xs text-[rgb(var(--color-text-muted))] line-clamp-3 mb-6 flex-1 font-medium leading-relaxed opacity-80">
@@ -991,7 +1040,7 @@ export default function DealerSupportView() {
                         'Learn more about this topic in our documentation.'}
                     </div>
                     <div className="flex items-center justify-between pt-5 border-t border-[rgb(var(--color-border))] mt-auto">
-                      <div className="flex items-center gap-1.5 text-[10px] font-black text-[rgb(var(--color-primary))] uppercase tracking-widest">
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-[rgb(var(--color-primary))] uppercase tracking-widest">
                         Read Guide{' '}
                         <ArrowRight
                           size={14}
@@ -1017,7 +1066,7 @@ export default function DealerSupportView() {
                   </p>
                   <button
                     onClick={() => setDocSearchQuery('')}
-                    className="mt-8 text-xs font-black text-[rgb(var(--color-primary))] uppercase tracking-widest hover:underline"
+                    className="mt-8 text-xs font-bold text-[rgb(var(--color-primary))] uppercase tracking-widest hover:underline"
                   >
                     Clear Search
                   </button>

@@ -3,13 +3,10 @@ import React from 'react';
 import AppearanceSettings from '../../settings/AppearanceSettings';
 import ProfileSettings from '../../settings/ProfileSettings';
 import SecuritySettings from '../../settings/SecuritySettings';
-import ConfigurationSettings from '../../settings/ConfigurationSettings';
-import GlobalSystemSettings from '../../settings/GlobalSystemSettings';
+import ChangePasswordSettings from '../../settings/ChangePasswordSettings';
 import UserPreferences from '../../settings/UserPreferences';
 import { useAuth } from '@/context/AuthContext';
-import OrganizationSettings from '@/components/settings/OrganizationSettings';
 import PageHeader from '@/components/common/PageHeader';
-// import userService from '@/services/userService';
 
 export default function SuperAdminSettings() {
   const { user } = useAuth();
@@ -24,11 +21,9 @@ export default function SuperAdminSettings() {
       <div className="space-y-8">
         <AppearanceSettings />
         <ProfileSettings user={user} />
-        <SecuritySettings />
-        <OrganizationSettings />
-        <ConfigurationSettings />
+        {/* <SecuritySettings /> */}
+        <ChangePasswordSettings />
         <UserPreferences />
-        <GlobalSystemSettings />
       </div>
     </div>
   );

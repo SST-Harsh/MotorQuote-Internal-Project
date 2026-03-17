@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Clock,
 } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ActionMenuPortal from '@/components/common/ActionMenuPortal';
 import Swal from 'sweetalert2';
 import { SkeletonTable } from '../../common/Skeleton';
@@ -39,6 +40,9 @@ import { usePreference } from '@/context/PreferenceContext';
 import { formatDate } from '@/utils/i18n';
 
 export default function ApiIntegrationsView() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
   const { data: apiKeys = [], isLoading: loading } = useApiKeys();
   const { preferences } = usePreference();
   const createMutation = useCreateApiKey();
@@ -209,7 +213,6 @@ export default function ApiIntegrationsView() {
         { value: 'read', label: 'Read' },
         { value: 'write', label: 'Write' },
         { value: 'delete', label: 'Delete' },
-        { value: 'admin', label: 'Admin' },
       ],
     },
   ];
@@ -407,7 +410,9 @@ export default function ApiIntegrationsView() {
             data={apiKeys}
             columns={columns}
             searchKeys={['service_name', 'service_type', 'environment']}
-            searchPlaceholder="Search keys..."
+            searchPlaceholder="Search keys by name, type, or environment..."
+            highlightId={highlightId}
+            persistenceKey="api-integrations"
             itemsPerPage={preferences.items_per_page || 10}
             extraControls={
               <button
@@ -447,6 +452,9 @@ export default function ApiIntegrationsView() {
               }}
               title="API Key Details"
               showActivityTab={false}
+              showAvatar={false}
+              showStatusBadge={false}
+              joinedLabel="Created At"
               data={{
                 ...keyDetails,
                 name: keyDetails.key_name,
@@ -478,23 +486,19 @@ export default function ApiIntegrationsView() {
                     {
                       label: 'API Key Prefix',
                       key: 'api_key',
-                      value: keyDetails.api_key
-                        ? keyDetails.api_key.substring(0, 8) + '...'
-                        : 'N/A',
+                      value: keyDetails.api_key ? (
+                        <div className="flex items-center gap-2 bg-[rgb(var(--color-background))] px-3 py-1.5 rounded-lg border border-[rgb(var(--color-border))] font-mono text-sm text-[rgb(var(--color-primary))] font-bold shadow-sm">
+                          {keyDetails.api_key.substring(0, 8)}...
+                        </div>
+                      ) : (
+                        'N/A'
+                      ),
                     },
                     {
                       label: 'Status',
                       key: 'status',
                       value: keyDetails.is_active ? 'Active' : 'Revoked',
                     },
-                  ],
-                },
-                {
-                  title: 'Metadata',
-                  icon: Clock,
-                  fields: [
-                    { label: 'Created At', key: 'created_at' },
-                    { label: 'Expires At', key: 'expires_at' },
                   ],
                 },
               ]}

@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
-import { useDealerships } from '@/hooks/useDealerships';
+import { useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
+import {
+  useInviteStaff,
+  useUpdateStaff,
+  useDeactivateStaff,
+  useReactivateStaff,
+} from '@/hooks/useStaff';
 import { usePreference } from '@/context/PreferenceContext';
 import DataTable from '../../common/DataTable';
-import DetailViewModal from '../../common/DetailViewModal';
 import GenericFormPage from '../../common/GenericFormPage';
 import Swal from 'sweetalert2';
 import * as yup from 'yup';
@@ -16,161 +20,40 @@ import {
   Trash2,
   Eye,
   Edit,
-  CheckCircle,
   User,
   Mail,
   Shield,
-  Lock,
-  Building2,
-  CheckSquare,
-  Camera,
-  ChevronRight,
-  ChevronDown,
-  Clock,
-  Activity,
-  Filter,
 } from 'lucide-react';
 import userService from '../../../services/userService';
 import staffService from '../../../services/staffService';
 import tagService from '@/services/tagService';
 import TagInput from '@/components/common/tags/TagInput';
+import TagList from '@/components/common/tags/TagList';
 import { SkeletonTable } from '@/components/common/Skeleton';
 import { useAuth } from '@/context/AuthContext';
 import PageHeader from '@/components/common/PageHeader';
-import FilterDrawer from '../../common/FilterDrawer';
-import { formatDate } from '@/utils/i18n';
+import { canDelete, canCreateUsers, canEditUsers } from '@/utils/roleUtils';
+import PhoneInput from '@/components/common/PhoneInput';
 
-const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
-  const [expanded, setExpanded] = useState({});
+const normalizePermissionIds = (input) => {
+  if (!Array.isArray(input)) return [];
+  const ids = input
+    .map((p) => {
+      if (!p) return null;
+      if (typeof p === 'string') return p;
+      if (typeof p === 'number') return String(p);
+      if (typeof p === 'object') {
+        if (p.value) return String(p.value);
+        if (p.id) return String(p.id);
+      }
+      return null;
+    })
+    .filter(Boolean);
 
-  const grouped = useMemo(
-    () =>
-      options.reduce((acc, p) => {
-        const category = p.code ? p.code.split('.')[0] : 'Other';
-        const catLabel = category.charAt(0).toUpperCase() + category.slice(1);
-        if (!acc[catLabel]) acc[catLabel] = [];
-        acc[catLabel].push(p);
-        return acc;
-      }, {}),
-    [options]
-  );
-
-  useEffect(() => {
-    const defaults = Object.keys(grouped).reduce((acc, key) => ({ ...acc, [key]: true }), {});
-    setExpanded(defaults);
-  }, [grouped]);
-
-  const toggleCategory = (cat) => {
-    setExpanded((prev) => ({ ...prev, [cat]: !prev[cat] }));
-  };
-
-  const togglePerm = (id) => {
-    const current = new Set(value);
-    if (current.has(id)) current.delete(id);
-    else current.add(id);
-    onChange(Array.from(current));
-  };
-
-  const handleSelectAll = (catPerms) => {
-    const allIds = catPerms.map((p) => p.value);
-    const current = new Set(value);
-    const allSelected = allIds.every((id) => current.has(id));
-
-    if (allSelected) {
-      allIds.forEach((id) => current.delete(id));
-    } else {
-      allIds.forEach((id) => current.add(id));
-    }
-    onChange(Array.from(current));
-  };
-
-  return (
-    <div className="space-y-4">
-      {Object.entries(grouped).map(([category, perms]) => {
-        const isExpanded = expanded[category];
-        const selectedCount = perms.filter((p) => value.includes(p.value)).length;
-        const isAllSelected = perms.length > 0 && selectedCount === perms.length;
-
-        return (
-          <div
-            key={category}
-            className="bg-[rgb(var(--color-surface))] rounded-xl border border-[rgb(var(--color-border))] overflow-hidden shadow-sm transition-all hover:border-[rgb(var(--color-primary))]/30"
-          >
-            <div
-              className="px-4 py-3 bg-[rgb(var(--color-background))]/50 border-b border-[rgb(var(--color-border))] flex items-center justify-between cursor-pointer select-none"
-              onClick={() => toggleCategory(category)}
-            >
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleCategory(category);
-                  }}
-                  className="p-1 hover:bg-[rgb(var(--color-background))] rounded-md transition-colors"
-                >
-                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold text-sm text-[rgb(var(--color-text))]">
-                    {category} Management
-                  </h4>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[rgb(var(--color-background))] text-[rgb(var(--color-text-muted))] border border-[rgb(var(--color-border))]">
-                    {selectedCount}/{perms.length}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelectAll(perms);
-                }}
-                className="text-xs font-medium text-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary-dark))] px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-              >
-                {isAllSelected ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-
-            {isExpanded && (
-              <div className="divide-y divide-[rgb(var(--color-border))]">
-                {perms.map((p) => (
-                  <label
-                    key={p.value}
-                    className="flex items-start gap-3 p-3 pl-10 hover:bg-[rgb(var(--color-background))]/50 cursor-pointer transition-colors group"
-                  >
-                    <div className="relative flex items-center mt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(p.value)}
-                        onChange={() => togglePerm(p.value)}
-                        className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-[rgb(var(--color-primary))] checked:bg-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:ring-offset-1"
-                      />
-                      <CheckCircle
-                        size={10}
-                        className="pointer-events-none absolute left-0.5 top-0.5 text-white opacity-0 peer-checked:opacity-100"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium text-[rgb(var(--color-text))] group-hover:text-[rgb(var(--color-primary))] transition-colors">
-                        {p.label}
-                      </span>
-                      {p.description && (
-                        <p className="text-xs text-[rgb(var(--color-text-muted))] mt-0.5">
-                          {p.description}
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+  return Array.from(new Set(ids));
 };
+
+import ModernPermissionsSelector from '../../common/ModernPermissionsSelector';
 
 const StaffManagement = ({
   users = [],
@@ -179,70 +62,43 @@ const StaffManagement = ({
   dealerships: dealershipsProp = [],
   loading: loadingProp = false,
   onRefresh,
-  activeFilters: activeFiltersProp,
-  setActiveFilters: setActiveFiltersProp,
   ...paginationProps
 }) => {
   const { preferences } = usePreference();
   const { user: currentUser } = useAuth();
   const isDealerManager = currentUser?.role === 'dealer_manager';
+  const canDeleteUser = currentUser ? canDelete(currentUser, 'users') : false;
+  const canCreate = canCreateUsers(currentUser);
+  const canEdit = canEditUsers(currentUser);
   const router = useRouter();
 
   const [viewMode, setViewMode] = useState('list');
   const searchParams = useSearchParams();
-  const highlightId = searchParams.get('highlight');
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
 
   const [openActionMenu, setOpenActionMenu] = useState(null);
-  const [viewingUser, setViewingUser] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
 
-  const [viewingActivities, setViewingActivities] = useState({ activities: [], loginLogs: [] });
   const [selectedFile, setSelectedFile] = useState(null);
+  const inviteParam = searchParams.get('invite');
 
-  // always use props if available
-  const activeFilters = useMemo(
-    () =>
-      activeFiltersProp || {
-        name: '',
-        roles: [],
-        statuses: [],
-        dealership: '',
-        tags: [],
-      },
-    [activeFiltersProp]
-  );
-  const setActiveFilters = setActiveFiltersProp || (() => {});
-
-  // Map activeFilters to the old filterConfig structure used in this component
-  const filterConfig = useMemo(
-    () => ({
-      roles: activeFilters.roles || [],
-      status: activeFilters.statuses || [],
-      dealerships: activeFilters.dealership ? [activeFilters.dealership] : [],
-    }),
-    [activeFilters]
-  );
-
-  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
-  const [tempFilterConfig, setTempFilterConfig] = useState(filterConfig);
-
-  // Sync temp filters when drawer opens
   useEffect(() => {
-    if (isFilterDrawerOpen) {
-      setTempFilterConfig(filterConfig);
+    if (inviteParam === 'true' && canCreate) {
+      setEditingUser(null);
+      setViewMode('form');
     }
-  }, [isFilterDrawerOpen, filterConfig]);
+  }, [inviteParam, canCreate]);
 
-  const clearFilters = () => {
-    setActiveFilters({
-      name: '',
-      roles: [],
-      statuses: [],
-      dealership: '',
-      tags: [],
-    });
-    setTempFilterConfig({ roles: [], status: [], dealerships: [] });
-  };
+  // Mutations
+  const inviteStaffMutation = useInviteStaff();
+  const updateStaffMutation = useUpdateStaff();
+  const deactivateStaffMutation = useDeactivateStaff();
+  const reactivateStaffMutation = useReactivateStaff();
+  const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
+  const deleteUserMutation = useDeleteUser();
+
+  // Mutations
 
   // Derived State from Props
   const loading = loadingProp;
@@ -267,7 +123,10 @@ const StaffManagement = ({
     }
 
     const formatted = (Array.isArray(rolesProp) ? rolesProp : [])
-      .filter((r) => r.name !== 'super_admin')
+      .filter((r) => {
+        const name = (r.name || '').toLowerCase();
+        return name !== 'super_admin' && name !== 'admin';
+      })
       .filter((r) => {
         if (isDealerManager) {
           const name = (r.name || '').toLowerCase();
@@ -308,7 +167,7 @@ const StaffManagement = ({
     return (Array.isArray(users) ? users : [])
       .filter((u) => {
         const roleName = u.role?.name || u.role;
-        return roleName !== 'super_admin' && roleName !== 'admin' && roleName !== 'dealer_manager';
+        return roleName !== 'super_admin' && roleName !== 'dealer_manager';
       })
       .map((u) => {
         const roleIdFromUser = u.role_id || u.roleId || u.role?.id;
@@ -324,10 +183,11 @@ const StaffManagement = ({
         return {
           ...u,
           id: u.id,
-          name: u.first_name && u.last_name ? `${u.first_name} ${u.last_name} ` : u.name || u.email,
+          name: u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.name || u.email,
           role: u.role?.name || u.role || 'user',
           roleId: roleId,
           work: u.dealership && u.dealership.name ? u.dealership.name : 'System',
+          dealershipId: u.dealership?.id || '',
           status: (u.is_active !== undefined ? u.is_active : u.isActive)
             ? 'active'
             : u.status === 'Pending' || u.status === 'Invited'
@@ -343,25 +203,6 @@ const StaffManagement = ({
         };
       });
   }, [users, roles]);
-
-  const filteredUsers = useMemo(() => {
-    let result = allUsers;
-
-    // Drawer Filtering
-    if (filterConfig.roles.length > 0) {
-      result = result.filter((u) => filterConfig.roles.includes(u.roleId));
-    }
-    if (filterConfig.status.length > 0) {
-      result = result.filter((u) => filterConfig.status.includes(u.status?.toLowerCase()));
-    }
-    if (filterConfig.dealerships.length > 0) {
-      result = result.filter(
-        (u) => u.dealership && filterConfig.dealerships.includes(u.dealership.id)
-      );
-    }
-
-    return result;
-  }, [allUsers, filterConfig]);
 
   useEffect(() => {
     const handleClickOutside = () => setOpenActionMenu(null);
@@ -391,15 +232,31 @@ const StaffManagement = ({
       })
       .filter(Boolean);
 
+    // Role Handling
+    let roleId = null;
+    if (payload.role) {
+      const r = (Array.isArray(roles) ? roles : []).find(
+        (item) =>
+          item.label === payload.role ||
+          item.code === payload.role ||
+          item.value === payload.role ||
+          (payload.role === 'support_staff' && (item.code === 'staff' || item.label === 'Staff'))
+      );
+      if (r) {
+        roleId = r.value;
+      }
+    }
+
     // Common cleanups
-    delete payload.role;
     delete payload.dealershipId;
 
-    // Role Handling
-    if (payload.role_id) {
-      const r = (Array.isArray(roles) ? roles : []).find((item) => item.value === payload.role_id);
-      if (r && (r.code === 'user' || r.code === 'admin')) {
-        payload.dealership_id = null;
+    if (payload.dealerships) {
+      const dealershipId = Array.isArray(payload.dealerships)
+        ? payload.dealerships[0]
+        : payload.dealerships;
+      payload.dealership_id = dealershipId;
+      if (!Array.isArray(payload.dealerships)) {
+        payload.dealerships = [dealershipId];
       }
     }
 
@@ -430,33 +287,23 @@ const StaffManagement = ({
           const dealerPayload = {
             first_name: payload.first_name,
             last_name: payload.last_name,
-            phone_number: payload.phone_number || payload.phone, // Ensure phone field matches API
-            permissions: selectedPermCodes, // API DOC: permissions [strings]
-            status: payload.status === 'Active' ? 'active' : 'inactive', // Lowercase status
+            phone_number: payload.phone_number || payload.phone,
+            permissions: selectedPermCodes,
+            status: payload.status === 'Active' ? 'active' : 'inactive',
+            dealerships: payload.dealerships ? [payload.dealerships] : [],
           };
-          await staffService.updateStaff(editingUser.id, dealerPayload);
+          await updateStaffMutation.mutateAsync({ id: editingUser.id, data: dealerPayload });
         } else {
           const finalPayload = { ...payload };
-          delete finalPayload.tags; // Move tags out of the main user payload
-          finalPayload.permission_ids = selectedPermIds; // Legacy Admin API uses IDs
+          delete finalPayload.tags;
+          finalPayload.role_id = roleId || payload.role; // Fallback to string if no ID found
+          finalPayload.permission_ids = selectedPermIds;
 
           console.log('Updating user with payload:', finalPayload);
-          await userService.updateUser(editingUser.id, finalPayload);
+          await updateUserMutation.mutateAsync({ id: editingUser.id, data: finalPayload });
         }
 
-        // Sync Tags for existing user
-        if (data.tags) {
-          const tagIds = data.tags.map((t) => t.id);
-          await tagService.syncTags('user', editingUser.id, tagIds);
-        }
-
-        Swal.fire({
-          icon: 'success',
-          title: 'User Updated',
-          text: 'User details updated successfully.',
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        // Tags functionality removed
       } else {
         if (isDealerManager) {
           // Adapt payload for Dealer API
@@ -465,37 +312,24 @@ const StaffManagement = ({
             first_name: payload.first_name,
             last_name: payload.last_name,
             phone_number: payload.phone_number || payload.phone,
-            role: payload.role, // Set role for new staff members
-            permissions: selectedPermCodes, // API DOC: permissions [strings]
+            role: payload.role,
+            permissions: selectedPermCodes,
+            dealerships: payload.dealerships ? [payload.dealerships] : [],
             send_invitation_email: true,
           };
-          await staffService.inviteStaff(dealerPayload);
+          await inviteStaffMutation.mutateAsync(dealerPayload);
         } else {
           // Legacy Admin API
           const finalPayload = { ...payload };
-          delete finalPayload.tags; // Move tags out of the main user payload
+          delete finalPayload.tags;
+          finalPayload.role_id = roleId || payload.role;
           finalPayload.permission_ids = selectedPermIds;
 
-          const newUser = await userService.createUser(finalPayload);
+          const newUser = await createUserMutation.mutateAsync(finalPayload);
           createdUserId = newUser?.id || newUser?.data?.id;
         }
 
-        // Sync Tags for new user
-        // Note: staffService.inviteStaff doesn't always return the new user ID clearly in some cases,
-        // if it does, we can add syncing for Dealer Staff invitations here too.
-        // For now, we sync for Admin created users and edits.
-        if (createdUserId && data.tags) {
-          const tagIds = data.tags.map((t) => t.id);
-          await tagService.syncTags('user', createdUserId, tagIds);
-        }
-
-        Swal.fire({
-          icon: 'success',
-          title: 'User Created',
-          text: 'New user added.',
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        // Tags functionality removed
       }
       setViewMode('list');
       setEditingUser(null);
@@ -509,6 +343,11 @@ const StaffManagement = ({
 
   const handleAction = async (action, user) => {
     setOpenActionMenu(null);
+
+    if (action === 'view') {
+      router.push(`/users/staff/${user.id}`);
+      return;
+    }
 
     if (action === 'suspend') {
       const isSuspended = user.status === 'Suspended';
@@ -525,13 +364,19 @@ const StaffManagement = ({
           try {
             const statusToSet = isSuspended ? true : false;
             if (isDealerManager) {
-              if (isSuspended) await staffService.reactivateStaff(user.id);
-              else await staffService.deactivateStaff(user.id, 'Suspended by Manager');
+              if (isSuspended) await reactivateStaffMutation.mutateAsync(user.id);
+              else
+                await deactivateStaffMutation.mutateAsync({
+                  id: user.id,
+                  reason: 'Suspended by Manager',
+                });
             } else {
-              await userService.updateUser(user.id, { is_active: statusToSet });
+              await updateUserMutation.mutateAsync({
+                id: user.id,
+                data: { is_active: statusToSet },
+              });
             }
             onRefresh?.();
-            Swal.fire(isSuspended ? 'Activated!' : 'Suspended!', '', 'success');
           } catch (e) {
             // Fallback to old mock logic if API fails? No, we want API only instructions.
             Swal.fire('Error', e?.response?.data?.message || 'Action failed', 'error');
@@ -542,7 +387,7 @@ const StaffManagement = ({
       const { value: formValues } = await Swal.fire({
         title: 'Reset Password',
         html: `
-    < div style = "text-align: left;" >
+                    <div style="text-align: left;">
                         <p style="margin-bottom: 15px;">Choose how to reset the password for <b>${user.name}</b>:</p>
                         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                             <input type="radio" id="auto" name="resetType" value="auto" checked onchange="document.getElementById('custom-pass-container').style.display = 'none'">
@@ -555,7 +400,7 @@ const StaffManagement = ({
                             <input id="swal-new-password" type="password" class="swal2-input" placeholder="New Password" style="margin: 0; width: 100%;">
                         </div>
                     </div>
-`,
+                `,
         showCancelButton: true,
         confirmButtonText: 'Reset Password',
         focusConfirm: false,
@@ -581,13 +426,13 @@ const StaffManagement = ({
             await Swal.fire({
               title: 'Password Reset Successful',
               html: `
-    < p > The password has been reset.</p >
+                                <p>The password has been reset.</p>
                                 <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 15px 0;">
                                     <p style="margin: 0; font-size: 0.9em; color: #6b7280;">Temporary Password:</p>
                                     <p style="margin: 5px 0 0 0; font-family: monospace; font-size: 1.2em; font-weight: bold; letter-spacing: 1px;">${result.temporaryPassword}</p>
                                 </div>
                                 <p style="font-size: 0.9em;">An email has also been sent to the user.</p>
-`,
+                            `,
               icon: 'success',
             });
           } else {
@@ -613,26 +458,45 @@ const StaffManagement = ({
       }).then(async (result) => {
         if (result.isConfirmed) {
           try {
-            await userService.deleteUser(user.id);
+            await deleteUserMutation.mutateAsync(user.id);
             onRefresh?.();
-            Swal.fire('Deleted!', 'User deleted.', 'success');
           } catch (error) {
             Swal.fire('Error', error?.response?.data?.message || 'Failed to delete user.', 'error');
           }
         }
       });
     } else if (action === 'view') {
-      // Navigate to staff detail page instead of modal
-      router.push(`/ staff - management / ${user.id} `);
+      router.push(`/users/${user.id}`);
     } else if (action === 'edit') {
       try {
-        // Fetch tags when editing
-        const currentTags = await tagService.getEntityTags('user', user.id);
-        setEditingUser({ ...user, tags: currentTags || [] });
+        // Fetch fresh user details and tags in parallel
+        const [fullUser, tags] = await Promise.all([
+          userService.getUserById(user.id),
+          tagService.getEntityTags('user', user.id).catch((e) => {
+            console.error('Failed to fetch user tags', e);
+            return [];
+          }),
+        ]);
+
+        // fullUser might be wrapped in a data property depending on API response structure
+        const userData = fullUser.data || fullUser;
+
+        const permission_ids = normalizePermissionIds(
+          userData.permission_ids || userData.permissions || userData.user_permissions
+        );
+
+        setEditingUser({ ...userData, permission_ids, tags });
         setViewMode('form');
-      } catch (err) {
-        console.error('Failed to fetch user tags:', err);
-        setEditingUser(user);
+      } catch (error) {
+        console.error('Failed to fetch user details', error);
+        // Fallback to list data if fetch fails
+        Swal.fire({
+          icon: 'warning',
+          title: 'Partial Data',
+          text: 'Could not fetch latest user details. Editing with cached data.',
+          timer: 2000,
+        });
+        setEditingUser({ ...user, tags: [] });
         setViewMode('form');
       }
     } else if (action === 'resend') {
@@ -677,36 +541,17 @@ const StaffManagement = ({
       yup.object().shape({
         first_name: yup.string().required('First Name is required'),
         last_name: yup.string().required('Last Name is required'),
+        phone: yup.string().required('Phone Number is required'),
         email: yup
           .string()
           .email('Invalid email address')
           .matches(/^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/, 'Email must be lowercase and valid')
           .required('Email is required'),
-        role_id: yup.string().required('Role is required'),
-        dealership_id: yup.string().nullable(),
+        role: yup.string().required('Role is required'),
+        dealerships: yup.mixed().nullable(),
         status: yup.string().required('Status is required'),
-        password: editingUser
-          ? yup
-              .string()
-              .transform((curr) => (curr === '' ? null : curr))
-              .nullable()
-              .min(6, 'Password must be at least 6 characters')
-          : yup
-              .string()
-              .required('Password is required')
-              .min(6, 'Password must be at least 6 characters'),
-        confirmPassword: editingUser
-          ? yup
-              .string()
-              .transform((curr) => (curr === '' ? null : curr))
-              .nullable()
-              .oneOf([yup.ref('password'), null], 'Passwords must match')
-          : yup
-              .string()
-              .required('Confirm Password is required')
-              .oneOf([yup.ref('password'), null], 'Passwords must match'),
       }),
-    [editingUser]
+    []
   );
 
   const fields = useMemo(
@@ -736,12 +581,26 @@ const StaffManagement = ({
             ],
           },
           {
-            name: 'email',
-            label: 'Email Address',
-            type: 'email',
-            placeholder: 'john@example.com',
-            required: true,
+            type: 'row',
+            fields: [
+              {
+                name: 'phone',
+                label: 'Phone Number',
+                type: 'custom',
+                component: PhoneInput,
+                props: { placeholder: '123-456-7890', enableSearch: true },
+                required: true,
+              },
+              {
+                name: 'email',
+                label: 'Email Address',
+                type: 'email',
+                placeholder: 'john@example.com',
+                required: true,
+              },
+            ],
           },
+          // Tags input removed
         ],
       },
       {
@@ -753,88 +612,54 @@ const StaffManagement = ({
             type: 'row',
             fields: [
               {
-                name: 'role_id',
+                name: 'role',
                 label: 'Role',
-                type: 'select',
-                options: roles,
+                type: 'text',
+                placeholder: 'Enter role...',
+                disabled: true,
                 required: true,
-                onChange: (value, { setValue }) => {
-                  const selectedRole = (Array.isArray(roles) ? roles : []).find(
-                    (r) => r.value === value
-                  );
-                  if (selectedRole) {
-                    setValue('permission_ids', selectedRole.default_permissions || []);
-                  }
-                },
               },
               {
                 name: 'status',
                 label: 'Account Status',
                 type: 'select',
-                options: [
-                  { value: 'Active', label: 'Active' },
-                  { value: 'Inactive', label: 'Inactive' },
-                  { value: 'Suspended', label: 'Suspended' },
-                ],
+                options: editingUser
+                  ? [
+                      { value: 'Active', label: 'Active' },
+                      { value: 'Inactive', label: 'Inactive' },
+                    ]
+                  : [{ value: 'Active', label: 'Active' }],
                 required: true,
               },
             ],
           },
           {
-            name: 'dealership_id',
+            name: 'dealerships',
             label: 'Assigned Dealership',
             type: 'select',
-            options: [{ value: '', label: 'Select Dealership...' }, ...dealerships],
-
-            showIf: (values) => {
-              const r = (Array.isArray(roles) ? roles : []).find(
-                (item) => item.value === values.role_id
-              );
-              return (
-                r && (r.code === 'dealer' || r.code === 'dealer_manager' || r.code === 'manager')
-              );
-            },
+            options: [...dealerships],
           },
           {
             name: 'permission_ids',
             label: 'Custom Permissions',
             type: 'custom',
-            component: PermissionsAccordion,
-            props: { options: availablePermissions },
-          },
-          {
-            name: 'tags',
-            label: 'Tags',
-            type: 'custom',
-            component: TagInput,
-            props: { type: 'user', placeholder: 'Add user tags...' },
-            className: 'col-span-2 mt-4',
-          },
-        ],
-      },
-      {
-        type: 'section',
-        title: 'Security',
-        icon: Lock,
-        fields: [
-          {
-            type: 'row',
-            fields: [
-              {
-                name: 'password',
-                label: 'Password',
-                type: 'password',
-                placeholder: '••••••••',
-                required: !editingUser, // Required only on create
-              },
-              {
-                name: 'confirmPassword',
-                label: 'Confirm Password',
-                type: 'password',
-                placeholder: '••••••••',
-                required: !editingUser,
-              },
-            ],
+            render: ({ value, onChange, getValues }) => {
+              const roleValue = getValues('role');
+              const selectedRole = (Array.isArray(roles) ? roles : []).find(
+                (r) =>
+                  String(r.value) === String(roleValue) ||
+                  r.label === roleValue ||
+                  r.code === roleValue
+              );
+              return (
+                <ModernPermissionsSelector
+                  value={value}
+                  onChange={onChange}
+                  options={availablePermissions}
+                  roleName={selectedRole?.code || 'user'}
+                />
+              );
+            },
           },
         ],
       },
@@ -863,30 +688,49 @@ const StaffManagement = ({
             '',
           first_name: editingUser?.first_name || editingUser?.firstName || '',
           last_name: editingUser?.last_name || editingUser?.lastName || '',
+          phone: editingUser?.phone || editingUser?.phone_number || editingUser?.phoneNumber || '',
           email: editingUser?.email || '',
-          role_id: (() => {
-            const rId = editingUser?.roleId || editingUser?.role_id || editingUser?.role?.id;
-            const rName =
-              typeof editingUser?.role === 'string'
-                ? editingUser.role
-                : editingUser?.role?.code || editingUser?.role?.name;
-            const matched = (Array.isArray(roles) ? roles : []).find(
-              (r) =>
-                (rId && String(r.value) === String(rId)) ||
-                (rName && (r.code === rName || r.label === rName || r.code === rName.toLowerCase()))
-            );
-            return matched ? matched.value : rId || '';
+          role: (() => {
+            if (isDealerManager) return 'support_staff';
+            if (editingUser) {
+              if (typeof editingUser.role === 'string') return editingUser.role;
+              return (
+                editingUser.role?.code || editingUser.role?.name || editingUser.role?.label || ''
+              );
+            }
+            return '';
           })(),
-          status: editingUser?.status || (editingUser?.is_active ? 'Active' : 'Inactive'),
-          dealership_id:
-            editingUser?.dealership_id ||
-            editingUser?.dealershipId ||
-            editingUser?.dealership?.id ||
-            '',
-          permission_ids: editingUser?.permissions || editingUser?.user_permissions || [],
+          status: editingUser?.id
+            ? String(editingUser?.status).toLowerCase() === 'active' ||
+              editingUser?.is_active === true
+              ? 'Active'
+              : 'Inactive'
+            : '',
+          dealerships: (() => {
+            // Prefer the dealerships array from API, fall back to dealership_id
+            const arr = editingUser?.dealerships;
+            if (Array.isArray(arr) && arr.length > 0) {
+              return String(arr[0]?.id || arr[0]);
+            }
+            return String(editingUser?.dealership_id || editingUser?.dealership?.id || '');
+          })(),
+          permission_ids: (() => {
+            const existing =
+              editingUser?.permission_ids ||
+              editingUser?.permissions ||
+              editingUser?.user_permissions;
+            if (existing && existing.length > 0) return existing;
+
+            if (isDealerManager) {
+              // Find the role that matches 'support_staff' or 'staff'
+              const supportRole = roles.find(
+                (r) => r.code === 'support_staff' || r.code === 'staff'
+              );
+              return supportRole?.default_permissions || [];
+            }
+            return [];
+          })(),
           tags: editingUser?.tags || [],
-          password: '',
-          confirmPassword: '',
         }}
         fields={fields}
         validationSchema={validationSchema}
@@ -912,130 +756,26 @@ const StaffManagement = ({
         actions={
           <button
             onClick={() => {
-              setEditingUser(null);
-              setViewMode('form');
+              if (canCreate) {
+                setEditingUser(null);
+                setViewMode('form');
+              }
             }}
-            className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg"
+            disabled={!canCreate}
+            className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg transition-all shadow-lg hover:bg-[rgb(var(--color-primary-dark))] disabled:opacity-50 disabled:cursor-not-allowed"
+            title={
+              canCreate
+                ? isDealerManager
+                  ? 'Create Staff Member'
+                  : 'Create New User'
+                : "You don't have permission to create users."
+            }
           >
             <UserPlus size={18} />
-            <span>{isDealerManager ? 'Invite Staff Member' : 'Create New User'}</span>
+            <span>{isDealerManager ? 'Create Staff Member' : 'Create New User'}</span>
           </button>
         }
       />
-
-      <FilterDrawer
-        isOpen={isFilterDrawerOpen}
-        onClose={() => setIsFilterDrawerOpen(false)}
-        onApply={() => {
-          setActiveFilters((prev) => ({
-            ...prev,
-            roles: tempFilterConfig.roles,
-            statuses: tempFilterConfig.status,
-            dealership: tempFilterConfig.dealerships[0] || '',
-          }));
-          setIsFilterDrawerOpen(false);
-        }}
-        onReset={() => setTempFilterConfig({ roles: [], status: [], dealerships: [] })}
-      >
-        {/* Role Filter */}
-        <div className="space-y-3">
-          <label className="text-sm font-bold text-[rgb(var(--color-text))] uppercase tracking-tight opacity-80">
-            Roles
-          </label>
-          <div className="space-y-2">
-            {(Array.isArray(roles) ? roles : [])
-              .filter((r) => r.value)
-              .map((role) => (
-                <label
-                  key={role.value}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-[rgb(var(--color-border))] cursor-pointer hover:bg-[rgb(var(--color-background))] transition-colors bg-[rgb(var(--color-surface))] hover:border-[rgb(var(--color-primary-dark))/0.3]"
-                >
-                  <div className="relative flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={tempFilterConfig.roles.includes(role.value)}
-                      onChange={() => {
-                        setTempFilterConfig((prev) => ({
-                          ...prev,
-                          roles: prev.roles.includes(role.value)
-                            ? prev.roles.filter((id) => id !== role.value)
-                            : [...prev.roles, role.value],
-                        }));
-                      }}
-                      className="peer h-4 w-4 appearance-none rounded border border-[rgb(var(--color-border))] checked:bg-[rgb(var(--color-primary))] checked:border-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] bg-[rgb(var(--color-background))]"
-                    />
-                    <CheckCircle
-                      size={10}
-                      className="pointer-events-none absolute left-0.5 top-0.5 text-white opacity-0 peer-checked:opacity-100"
-                    />
-                  </div>
-                  <span className="text-sm font-medium text-[rgb(var(--color-text))]">
-                    {role.label}
-                  </span>
-                </label>
-              ))}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <label className="text-sm font-bold text-[rgb(var(--color-text))] uppercase tracking-tight opacity-80">
-            Status
-          </label>
-          <div className="relative">
-            <select
-              className="w-full h-11 pl-4 pr-10 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl text-sm font-medium text-[rgb(var(--color-text))] outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] focus:border-[rgb(var(--color-primary))] appearance-none cursor-pointer transition-all hover:bg-[rgb(var(--color-background))] hover:border-[rgb(var(--color-border-hover))] shadow-sm"
-              value={tempFilterConfig.status[0] || ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                setTempFilterConfig((prev) => ({
-                  ...prev,
-                  status: val ? [val] : [],
-                }));
-              }}
-            >
-              <option value="">All Statuses</option>
-              {['Active', 'Inactive', 'Suspended', 'Pending'].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={16}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none"
-            />
-          </div>
-        </div>
-
-        {!isDealerManager && dealerships.length > 0 && (
-          <div className="space-y-3">
-            <label className="text-sm font-bold text-[rgb(var(--color-text))] uppercase tracking-tight opacity-80">
-              Dealership
-            </label>
-            <div className="relative">
-              <select
-                className="w-full h-11 pl-4 pr-10 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl text-sm font-medium text-[rgb(var(--color-text))] outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] focus:border-[rgb(var(--color-primary))] appearance-none cursor-pointer transition-all hover:bg-[rgb(var(--color-background))] hover:border-[rgb(var(--color-border-hover))] shadow-sm"
-                value={tempFilterConfig.dealerships[0] || ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setTempFilterConfig((prev) => ({ ...prev, dealerships: val ? [val] : [] }));
-                }}
-              >
-                <option value="">All Dealerships</option>
-                {dealerships.map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={16}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none"
-              />
-            </div>
-          </div>
-        )}
-      </FilterDrawer>
 
       {loading ? (
         <div className="p-6 overflow-hidden">
@@ -1043,28 +783,43 @@ const StaffManagement = ({
         </div>
       ) : (
         <DataTable
-          onFilterClick={() => setIsFilterDrawerOpen(true)}
-          onClearFilters={clearFilters}
-          showClearFilter={
-            filterConfig.roles.length > 0 ||
-            filterConfig.status.length > 0 ||
-            filterConfig.dealerships.length > 0
-          }
-          data={filteredUsers}
+          data={allUsers}
           searchKeys={['name', 'email', 'work']}
+          searchPlaceholder="Search staff by name or email..."
           highlightId={highlightId}
           filterOptions={
             isDealerManager
-              ? []
+              ? [
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    options: [
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
+                    ],
+                  },
+                ]
               : [
                   {
-                    key: 'role',
+                    key: 'roleId',
                     label: 'Role',
+                    options: (Array.isArray(roles) ? roles : []).map((r) => ({
+                      value: r.value,
+                      label: r.label,
+                    })),
+                  },
+                  {
+                    key: 'status',
+                    label: 'Status',
                     options: [
-                      { value: 'admin', label: 'Admin' },
-                      { value: 'dealer_manager', label: 'Dealer Manager' },
-                      { value: 'staff', label: 'Staff' },
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
                     ],
+                  },
+                  {
+                    key: 'dealershipId',
+                    label: 'Dealership',
+                    options: dealerships,
                   },
                 ]
           }
@@ -1073,6 +828,7 @@ const StaffManagement = ({
             {
               header: 'Email',
               accessor: 'email',
+              sortable: true,
               className: 'text-[rgb(var(--color-text-muted))]',
             },
             {
@@ -1080,9 +836,7 @@ const StaffManagement = ({
               type: 'badge',
               accessor: 'role',
               config: {
-                purple: ['admin'],
-                blue: ['dealer_manager'],
-                orange: ['staff'],
+                orange: ['staff', 'support staff', 'support_staff'],
               },
             },
             ...(!isDealerManager ? [{ header: 'Work', accessor: 'work' }] : []),
@@ -1116,6 +870,8 @@ const StaffManagement = ({
             {
               header: 'Status',
               type: 'badge',
+              sortable: true,
+              sortKey: (row) => row.status || '',
               accessor: (row) =>
                 row.status
                   ? row.status.charAt(0).toUpperCase() + row.status.slice(1).toLowerCase()
@@ -1155,7 +911,7 @@ const StaffManagement = ({
                         });
                       }
                     }}
-                    className={`p - 1.5 rounded - lg transition - colors ${openActionMenu?.id === row.id ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:bg-gray-100'} `}
+                    className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}
                   >
                     <MoreVertical size={16} />
                   </button>
@@ -1164,6 +920,7 @@ const StaffManagement = ({
             },
           ]}
           itemsPerPage={preferences.items_per_page || 10}
+          persistenceKey="staff-management"
           {...paginationProps}
         />
       )}
@@ -1191,13 +948,18 @@ const StaffManagement = ({
               <Eye size={14} /> View Details
             </button>
             <button
-              onClick={() =>
-                handleAction(
-                  'edit',
-                  (Array.isArray(allUsers) ? allUsers : []).find((u) => u.id === openActionMenu.id)
-                )
-              }
-              className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+              onClick={() => {
+                if (canEdit)
+                  handleAction(
+                    'edit',
+                    (Array.isArray(allUsers) ? allUsers : []).find(
+                      (u) => u.id === openActionMenu.id
+                    )
+                  );
+              }}
+              disabled={!canEdit}
+              className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={canEdit ? 'Edit User' : "You don't have permission to edit users."}
             >
               <Edit size={14} /> Edit User
             </button>
@@ -1238,175 +1000,23 @@ const StaffManagement = ({
             })()}
             <div className="h-px bg-[rgb(var(--color-border))] my-1"></div>
             <button
-              onClick={() =>
-                handleAction(
-                  'delete',
-                  (Array.isArray(allUsers) ? allUsers : []).find((u) => u.id === openActionMenu.id)
-                )
-              }
-              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+              onClick={() => {
+                if (canDeleteUser)
+                  handleAction(
+                    'delete',
+                    (Array.isArray(allUsers) ? allUsers : []).find(
+                      (u) => u.id === openActionMenu.id
+                    )
+                  );
+              }}
+              disabled={!canDeleteUser}
+              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={canDeleteUser ? 'Delete User' : "You don't have permission to delete users."}
             >
               <Trash2 size={14} /> Delete User
             </button>
           </div>
         </>
-      )}
-
-      {viewingUser && (
-        <DetailViewModal
-          isOpen={!!viewingUser}
-          onClose={() => {
-            setViewingUser(null);
-            setViewingActivities([]);
-          }}
-          data={{
-            ...viewingUser,
-            name: viewingUser.name,
-            role: viewingUser.role,
-            status: viewingUser.status,
-            permissions:
-              Array.isArray(viewingUser.permissions) && viewingUser.permissions.length > 0 ? (
-                <div className="flex flex-wrap gap-1 justify-end">
-                  {viewingUser.permissions.map((permId) => {
-                    const perm = (
-                      Array.isArray(availablePermissions) ? availablePermissions : []
-                    ).find((p) => p.value === permId);
-                    const label = perm ? perm.label : permId;
-                    return (
-                      <span
-                        key={permId}
-                        className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs border border-slate-200 text-left"
-                      >
-                        {label}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : (
-                'None'
-              ),
-            joinedDate: viewingUser.createdAt ? formatDate(viewingUser.createdAt) : 'Recent',
-          }}
-          title="User Profile"
-          sections={[
-            {
-              title: 'Account Info',
-              fields: [
-                { label: 'Full Name', key: 'name' },
-                { label: 'Email Address', key: 'email' },
-                { label: 'Role', key: 'role' },
-                { label: 'Status', key: 'status' },
-              ],
-            },
-            {
-              title: 'Organization',
-              fields: [
-                { label: 'Dealership / Work', key: 'work' },
-                { label: 'Permissions', key: 'permissions' },
-              ],
-            },
-          ]}
-          activityContent={
-            <div className="space-y-6">
-              {/* 1. Login History Section */}
-              {viewingActivities.loginLogs && viewingActivities.loginLogs.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-[rgb(var(--color-text))] flex items-center gap-2">
-                    <Clock size={16} className="text-blue-500" /> Recent Logins
-                  </h4>
-                  <div className="space-y-2">
-                    {viewingActivities.loginLogs.map((log, idx) => (
-                      <div
-                        key={idx}
-                        className="flex justify-between items-center p-3 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md">
-                            <User size={14} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-[rgb(var(--color-text))]">
-                              Login Detected
-                            </p>
-                            <p className="text-xs text-[rgb(var(--color-text-muted))]">
-                              IP: {log.ip_address || log.ip || log.ipAddress || 'Unknown'}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-xs text-[rgb(var(--color-text-muted))]">
-                          {(() => {
-                            const dateVal =
-                              log.created_at ||
-                              log.timestamp ||
-                              log.date ||
-                              log.createdAt ||
-                              log.time ||
-                              log.login_time;
-                            if (!dateVal) return 'N/A';
-                            const d = new Date(dateVal);
-                            return isNaN(d.getTime()) ? dateVal : d.toLocaleString();
-                          })()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 2. General Activities Section */}
-              {viewingActivities.activities && viewingActivities.activities.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-[rgb(var(--color-text))] flex items-center gap-2">
-                    <Activity size={16} className="text-[rgb(var(--color-primary))]" /> General
-                    Actions
-                  </h4>
-                  <div className="space-y-3">
-                    {viewingActivities.activities.map((act, idx) => (
-                      <div
-                        key={idx}
-                        className="flex gap-4 p-4 rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] hover:shadow-sm transition-shadow"
-                      >
-                        <div
-                          className={`p - 2 rounded - lg h - fit ${
-                            act.action === 'Login'
-                              ? 'bg-blue-100 text-blue-600'
-                              : act.action === 'Create'
-                                ? 'bg-green-100 text-green-600'
-                                : 'bg-purple-100 text-purple-600'
-                          } `}
-                        >
-                          <Activity size={18} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-start">
-                            <h4 className="font-semibold text-[rgb(var(--color-text))]">
-                              {act.action}
-                            </h4>
-                            <span className="text-xs text-[rgb(var(--color-text-muted))]">
-                              {new Date(act.timestamp || Date.now()).toLocaleString()}
-                            </span>
-                          </div>
-                          <p className="text-sm text-[rgb(var(--color-text-muted))] mt-1">
-                            {typeof act.details === 'object'
-                              ? JSON.stringify(act.details)
-                              : act.details || 'No details available'}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Empty State */}
-              {!viewingActivities.activities?.length && !viewingActivities.loginLogs?.length && (
-                <div className="text-center py-8 text-[rgb(var(--color-text-muted))]">
-                  <p>No activity recorded.</p>
-                </div>
-              )}
-            </div>
-          }
-        />
       )}
     </div>
   );

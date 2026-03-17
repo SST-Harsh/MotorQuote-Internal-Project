@@ -7,6 +7,7 @@ import userService from '@/services/userService';
 import Swal from 'sweetalert2';
 import Loader from '@/components/common/Loader';
 import { useAuth } from '@/context/AuthContext';
+import PhoneInput from '@/components/common/PhoneInput';
 
 export default function DealershipInfoSettings() {
   const { user } = useAuth();
@@ -212,19 +213,22 @@ export default function DealershipInfoSettings() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-[rgb(var(--color-text))] mb-1">
-              Phone Number
-            </label>
-            <div className="relative">
-              <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="tel"
-                value={info.phone}
-                onChange={(e) => setInfo({ ...info, phone: e.target.value })}
-                className="w-full pl-10 p-3 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-              />
-            </div>
+          <div className="phone-input-field">
+            <PhoneInput
+              label="Phone Number"
+              value={info.phone}
+              onChange={(val) => setInfo({ ...info, phone: val })}
+              placeholder="Enter phone number"
+              enableSearch={true}
+              inputStyle={{
+                width: '100%',
+                height: '48px',
+                fontSize: '14px',
+                borderRadius: '12px',
+                border: '1px solid rgb(var(--color-border))',
+                background: 'rgb(var(--color-background))',
+              }}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-[rgb(var(--color-text))] mb-1">

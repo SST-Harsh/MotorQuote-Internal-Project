@@ -1,12 +1,93 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { User, Camera, Save, Loader2, Phone } from 'lucide-react';
+import { User, Camera, Save, Loader2, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import Swal from 'sweetalert2';
-import api from '../../utils/api'; // Added missing import
 import userService from '../../services/userService';
-
 import { useAuth } from '../../context/AuthContext';
+import CustomPhoneInput from '../common/PhoneInput';
+
+// ── Inline error helper ──────────────────────────────────────────────────────
+const FieldError = ({ message }) => {
+  if (!message) return null;
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+      <AlertCircle size={12} className="text-[rgb(var(--color-error))] shrink-0" />
+      <p className="text-xs font-medium text-[rgb(var(--color-error))]">{message}</p>
+    </div>
+  );
+};
+
+// ── Validation rules ─────────────────────────────────────────────────────────
+const validate = (formData) => {
+  const errs = {};
+  if (!formData.firstName?.trim()) {
+    errs.firstName = 'First name is required.';
+  } else if (!/^[A-Za-z\s'-]+$/.test(formData.firstName.trim())) {
+    errs.firstName = 'First name can only contain letters.';
+  }
+  if (!formData.lastName?.trim()) {
+    errs.lastName = 'Last name is required.';
+  } else if (!/^[A-Za-z\s'-]+$/.test(formData.lastName.trim())) {
+    errs.lastName = 'Last name can only contain letters.';
+  }
+
+  if (!formData.email?.trim()) {
+    errs.email = 'Email address is required.';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+    errs.email = 'Please enter a valid email address.';
+  }
+
+  const rawPhone = formData.phone || '';
+  const phoneDigits = rawPhone.replace(/\D/g, '');
+
+  if (!phoneDigits) {
+    errs.phone = 'Phone number is required.';
+  } else {
+    // Detect country and required length
+    let requiredLength = 7; // Default minimum
+    let countryName = '';
+
+    if (rawPhone.startsWith('+1')) {
+      requiredLength = 10;
+      countryName = 'US';
+    } else if (rawPhone.startsWith('+91')) {
+      requiredLength = 10;
+      countryName = 'India';
+    }
+
+    // Get the length of the number without the country code
+    // US (+1) -> digits after the 1
+    // India (+91) -> digits after the 91
+    const countryCodePrefix = rawPhone.startsWith('+91')
+      ? '91'
+      : rawPhone.startsWith('+1')
+        ? '1'
+        : '';
+    const localDigits = countryCodePrefix
+      ? phoneDigits.slice(countryCodePrefix.length)
+      : phoneDigits;
+
+    if (countryName && localDigits.length !== requiredLength) {
+      errs.phone = `${countryName} phone numbers must be exactly ${requiredLength} digits.`;
+    } else if (localDigits.length < 7) {
+      errs.phone = 'Please enter a valid phone number (minimum 7 digits).';
+    }
+  }
+
+  return errs;
+};
+
+// ── Name parser — handles first_name, name, full_name ───────────────────────
+const parseName = (src) => ({
+  first:
+    src.first_name || src.firstName || (src.full_name || src.name || '').trim().split(' ')[0] || '',
+  last:
+    src.last_name ||
+    src.lastName ||
+    (src.full_name || src.name || '').trim().split(' ').slice(1).join(' ') ||
+    '',
+});
 
 export default function ProfileSettings({ user }) {
   const { updateProfile } = useAuth();
@@ -15,34 +96,49 @@ export default function ProfileSettings({ user }) {
   const fileInputRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
 
-  const [formData, setFormData] = useState({
-    firstName:
-      userData.first_name ||
-      userData.firstName ||
-      (userData.name ? userData.name.split(' ')[0] : 'John'),
-    lastName:
-      userData.last_name ||
-      userData.lastName ||
-      (userData.name ? userData.name.split(' ').slice(1).join(' ') : 'Doe'),
-    email: userData.email || 'admin@example.com',
-    phone: userData.phone || userData.phone_number || '1234567890',
+  const [formData, setFormData] = useState(() => {
+    const n = parseName(userData);
+    return {
+      firstName: n.first,
+      lastName: n.last,
+      email: userData.email || '',
+      phone: userData.phone || userData.phone_number || '',
+    };
+  });
+
+  // Track original saved values to detect changes
+  const [originalData, setOriginalData] = useState(() => {
+    const n = parseName(userData);
+    return {
+      firstName: n.first,
+      lastName: n.last,
+      email: userData.email || '',
+      phone: userData.phone || userData.phone_number || '',
+    };
   });
 
   const [selectedFile, setSelectedFile] = useState(null);
 
+  // True when any field differs from saved values OR a new avatar was selected
+  const isDirty =
+    selectedFile !== null ||
+    formData.firstName !== originalData.firstName ||
+    formData.lastName !== originalData.lastName ||
+    formData.email !== originalData.email ||
+    formData.phone !== originalData.phone;
+
   useEffect(() => {
     if (user) {
+      const n = parseName(user);
       setFormData((prev) => ({
         ...prev,
-        firstName:
-          user.first_name || user.firstName || (user.name ? user.name.split(' ')[0] : 'John'),
-        lastName:
-          user.last_name ||
-          user.lastName ||
-          (user.name ? user.name.split(' ').slice(1).join(' ') : 'Doe'),
-        email: user.email || 'admin@example.com',
-        phone: user.phone || user.phone_number || '1234567890',
+        firstName: n.first || prev.firstName,
+        lastName: n.last || prev.lastName,
+        email: user.email || prev.email,
+        phone: user.phone || user.phone_number || prev.phone,
       }));
     }
   }, [user]);
@@ -51,22 +147,28 @@ export default function ProfileSettings({ user }) {
     const fetchProfile = async () => {
       try {
         const response = await userService.getMyProfile();
-        // Resilience: Handle both {success, data} and flat user object
         const profile = response?.data || response;
 
         if (profile) {
-          setFormData((prev) => ({
-            ...prev,
-            firstName:
-              profile.first_name ||
-              profile.firstName ||
-              (profile.name ? profile.name.split(' ')[0] : ''),
-            lastName:
-              profile.last_name ||
-              profile.lastName ||
-              (profile.name ? profile.name.split(' ').slice(1).join(' ') : ''),
+          const n = parseName(profile);
+          const fetched = {
+            // Never overwrite with empty — fall back to current formData value
+            firstName: n.first || '',
+            lastName: n.last || '',
             email: profile.email || '',
-            phone: profile.phone_number || profile.phone || '1234567890',
+            phone: profile.phone_number || profile.phone || '',
+          };
+          setFormData((prev) => ({
+            firstName: fetched.firstName || prev.firstName,
+            lastName: fetched.lastName || prev.lastName,
+            email: fetched.email || prev.email,
+            phone: fetched.phone || prev.phone,
+          }));
+          setOriginalData((prev) => ({
+            firstName: fetched.firstName || prev.firstName,
+            lastName: fetched.lastName || prev.lastName,
+            email: fetched.email || prev.email,
+            phone: fetched.phone || prev.phone,
           }));
 
           if (profile.profile_picture || profile.avatar || profile.url) {
@@ -80,9 +182,27 @@ export default function ProfileSettings({ user }) {
     fetchProfile();
   }, []);
 
+  // Re-validate fields that have already been touched when form data changes
+  useEffect(() => {
+    if (Object.keys(touched).length > 0) {
+      const allErrors = validate(formData);
+      const relevantErrors = {};
+      Object.keys(touched).forEach((key) => {
+        if (allErrors[key]) relevantErrors[key] = allErrors[key];
+      });
+      setErrors(relevantErrors);
+    }
+  }, [formData, touched]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleBlur = (field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const allErrors = validate(formData);
+    setErrors((prev) => ({ ...prev, [field]: allErrors[field] }));
   };
 
   const handleImageClick = () => {
@@ -93,7 +213,6 @@ export default function ProfileSettings({ user }) {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        // Increased to 5MB as per documentation
         Swal.fire({
           icon: 'error',
           title: 'File too large',
@@ -116,13 +235,21 @@ export default function ProfileSettings({ user }) {
   };
 
   const handleSave = async () => {
+    // Touch all validated fields so errors appear
+    setTouched({ firstName: true, lastName: true, email: true, phone: true });
+
+    const allErrors = validate(formData);
+    setErrors(allErrors);
+
+    if (Object.keys(allErrors).length > 0) return; // Block save
+
     setIsSaving(true);
     let uploadedAvatarUrl = null;
 
     try {
       if (selectedFile) {
         const result = await userService.uploadProfileImage(selectedFile);
-        const imageData = result?.data || result; // Resilience
+        const imageData = result?.data || result;
 
         if (
           imageData?.profile_picture ||
@@ -141,24 +268,25 @@ export default function ProfileSettings({ user }) {
           throw new Error(result.error || result.message || 'Image upload failed');
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 500)); // Small UX delay
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const updates = {
         first_name: formData.firstName,
         last_name: formData.lastName,
+        email: formData.email,
         phone_number: formData.phone,
       };
 
       const response = await userService.updateMyProfile(updates);
-      const updatedUser = response?.data || response; // Resilience
+      const updatedUser = response?.data || response;
 
       const normalizedUser = {
         ...updatedUser,
         firstName: updatedUser.first_name || updatedUser.firstName || formData.firstName,
         lastName: updatedUser.last_name || updatedUser.lastName || formData.lastName,
         name: `${updatedUser.first_name || formData.firstName} ${updatedUser.last_name || formData.lastName}`,
+        phone: updatedUser.phone_number || updatedUser.phone || formData.phone,
         phone_number: updatedUser.phone_number || updatedUser.phone || formData.phone,
-        // Explicitly send the new avatar to context to ensure immediate Sidebar update
         ...(uploadedAvatarUrl && {
           profile_picture: `${uploadedAvatarUrl}${uploadedAvatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`,
           avatar: `${uploadedAvatarUrl}${uploadedAvatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`,
@@ -166,9 +294,18 @@ export default function ProfileSettings({ user }) {
       };
 
       updateProfile(normalizedUser);
+      // Reset dirty tracking after successful save
+      setOriginalData({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+      });
       setIsSaving(false);
-
+      setSelectedFile(null);
       setAvatarPreview(null);
+      setTouched({});
+      setErrors({});
 
       Swal.fire({
         icon: 'success',
@@ -192,10 +329,15 @@ export default function ProfileSettings({ user }) {
     }
   };
 
-  const currentAvatar =
-    avatarPreview ||
-    user?.profile_picture ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.firstName)}&background=random`;
+  const inputClass = (field) =>
+    `w-full px-4 py-2 rounded-lg border ${
+      errors[field] && touched[field]
+        ? 'border-[rgb(var(--color-error))] bg-[rgb(var(--color-error)/0.03)]'
+        : 'border-[rgb(var(--color-border))]'
+    } bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] focus:border-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary)/0.2)] outline-none transition-all`;
+
+  const currentAvatar = avatarPreview || user?.profile_picture || '/assets/avatar-placeholder.png';
+
   return (
     <div className="bg-[rgb(var(--color-surface))] rounded-xl shadow-sm border border-[rgb(var(--color-border))] p-8">
       <h2 className="text-lg font-bold text-[rgb(var(--color-text))] mb-6 flex items-center gap-2">
@@ -210,8 +352,8 @@ export default function ProfileSettings({ user }) {
               src={currentAvatar}
               alt="Profile"
               className="w-full h-full object-cover transition-opacity group-hover:opacity-75"
-              width={48}
-              height={48}
+              width={96}
+              height={96}
             />
           </div>
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
@@ -228,6 +370,7 @@ export default function ProfileSettings({ user }) {
 
         {/* Form Section */}
         <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* First Name */}
           <div className="space-y-1">
             <label className="text-sm font-semibold text-[rgb(var(--color-text))]">
               First Name
@@ -237,9 +380,14 @@ export default function ProfileSettings({ user }) {
               name="firstName"
               value={formData.firstName}
               onChange={handleInputChange}
-              className="w-full px-4 py-2 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] focus:border-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary)/0.2)] outline-none transition-all"
+              onBlur={() => handleBlur('firstName')}
+              className={inputClass('firstName')}
+              placeholder="John"
             />
+            <FieldError message={touched.firstName && errors.firstName} />
           </div>
+
+          {/* Last Name */}
           <div className="space-y-1">
             <label className="text-sm font-semibold text-[rgb(var(--color-text))]">Last Name</label>
             <input
@@ -247,9 +395,14 @@ export default function ProfileSettings({ user }) {
               name="lastName"
               value={formData.lastName}
               onChange={handleInputChange}
-              className="w-full px-4 py-2 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] focus:border-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary)/0.2)] outline-none transition-all"
+              onBlur={() => handleBlur('lastName')}
+              className={inputClass('lastName')}
+              placeholder="Doe"
             />
+            <FieldError message={touched.lastName && errors.lastName} />
           </div>
+
+          {/* Email */}
           <div className="space-y-1 md:col-span-2">
             <label className="text-sm font-semibold text-[rgb(var(--color-text))]">
               Email Address
@@ -258,29 +411,27 @@ export default function ProfileSettings({ user }) {
               type="email"
               name="email"
               value={formData.email}
-              readOnly
-              disabled
-              className="w-full px-4 py-2 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] cursor-not-allowed opacity-70 outline-none transition-all"
+              onChange={handleInputChange}
+              onBlur={() => handleBlur('email')}
+              className={inputClass('email')}
+            />
+            <FieldError message={touched.email && errors.email} />
+          </div>
+
+          {/* Phone */}
+          <div className="space-y-1 md:col-span-1">
+            <CustomPhoneInput
+              label="Phone Number"
+              value={formData.phone}
+              onChange={(val) => {
+                setFormData((prev) => ({ ...prev, phone: val }));
+              }}
+              onBlur={() => handleBlur('phone')}
+              error={touched.phone ? errors.phone : undefined}
             />
           </div>
-          <div className="space-y-1 md:col-span-1">
-            <label className="text-sm font-semibold text-[rgb(var(--color-text))]">
-              Phone Number
-            </label>
-            <div className="relative">
-              <Phone
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]"
-              />
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleInputChange}
-                className="w-full pl-10 pr-4  py-2 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] focus:border-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary)/0.2)] outline-none transition-all"
-              />
-            </div>
-          </div>
+
+          {/* Role */}
           <div className="space-y-1 md:col-span-1">
             <label className="text-sm font-semibold text-[rgb(var(--color-text))]">Role</label>
             <div className="w-full px-4 py-2 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text-muted))] capitalize cursor-not-allowed opacity-80">
@@ -293,9 +444,9 @@ export default function ProfileSettings({ user }) {
       <div className="flex justify-end">
         <button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || !isDirty}
           type="button"
-          className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-6 py-2.5 rounded-lg font-medium hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-lg shadow-[rgb(var(--color-primary)/0.3)] disabled:opacity-70 disabled:cursor-wait"
+          className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-6 py-2.5 rounded-lg font-medium hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-lg shadow-[rgb(var(--color-primary)/0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
           Save Changes

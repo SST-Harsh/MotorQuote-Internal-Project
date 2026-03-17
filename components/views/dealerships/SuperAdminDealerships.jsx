@@ -1,9 +1,10 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import DataTable from '../../common/DataTable';
+import CustomSelect from '../../common/CustomSelect';
 import GenericFormPage from '@/components/common/GenericFormPage';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Swal from 'sweetalert2';
 import * as yup from 'yup';
 import {
@@ -11,7 +12,6 @@ import {
   Mail,
   MapPin,
   Phone,
-  User,
   Fingerprint,
   CheckCircle,
   Edit2,
@@ -20,8 +20,13 @@ import {
   MapPinHouse,
   MapMinus,
   MapPinned,
+  MoreVertical,
+  Trash2,
+  ChevronDown,
 } from 'lucide-react';
+import ActionMenuPortal from '@/components/common/ActionMenuPortal';
 import { SkeletonTable } from '../../common/Skeleton';
+import MultiSelect from '@/components/common/MultiSelect';
 import {
   useDealerships,
   useCreateDealership,
@@ -38,11 +43,25 @@ import TagList from '@/components/common/tags/TagList';
 import FilterDrawer from '../../common/FilterDrawer';
 import TagFilter from '@/components/common/tags/TagFilter';
 import PageHeader from '@/components/common/PageHeader';
+import PhoneInput from '@/components/common/PhoneInput';
+import {
+  normalizeRole,
+  canCreateDealership,
+  canDelete,
+  canEditDealership,
+  canViewDealership,
+} from '@/utils/roleUtils';
+import { useAuth } from '@/context/AuthContext';
 
 const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
   const { data: dealershipsData = [], isLoading: isLoadingDealerships } = useDealerships();
   const { data: usersData = [], isLoading: isLoadingUsers } = useUsers();
   const { preferences } = usePreference();
+  const { user } = useAuth();
+  const canCreate = canCreateDealership(user);
+  const canView = canViewDealership(user);
+  const canDeleteVal = canDelete(user, 'dealership');
+  const canEdit = canEditDealership(user);
 
   const createDealershipMutation = useCreateDealership();
   const updateDealershipMutation = useUpdateDealership();
@@ -55,13 +74,8 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
 
     const dealerList = allUsers
       .filter((u) => {
-        const roleValue = u.role?.name || u.role || u.user_role || u.userRole || '';
-        const roleStr = String(roleValue).toLowerCase();
-        return (
-          roleStr.includes('dealer') ||
-          roleStr.includes('manager') ||
-          ['dealer_manager', 'dealership_manager', 'dealership_admin'].includes(roleStr)
-        );
+        const role = normalizeRole(u.role);
+        return role === 'dealer_manager';
       })
       .map((u) => ({
         label:
@@ -69,20 +83,7 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         value: u.id,
       }));
 
-    const adminList = allUsers
-      .filter((u) => {
-        const roleStr = (u.role?.name || u.role || '').toLowerCase();
-        const isAdmin = roleStr.includes('admin') || roleStr === 'admin';
-        const isSuperAdmin = roleStr.includes('super_admin') || roleStr === 'super_admin';
-        return isAdmin && !isSuperAdmin;
-      })
-      .map((u) => ({
-        label:
-          `${u.first_name || u.firstName || u.name || ''} ${u.last_name || u.lastName || ''} (${u.email})`.trim(),
-        value: u.id,
-      }));
-
-    return { dealers: dealerList, admins: adminList };
+    return { dealers: dealerList };
   }, [usersData]);
 
   const dealershipSchema = yup.object().shape({
@@ -98,7 +99,7 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
     location: yup.string(),
     contact_phone: yup
       .string()
-      .matches(/^[0-9]{10}$/, 'Phone must be exactly 10 digits')
+      .matches(/^\+?[0-9]{10,15}$/, 'Phone must be between 10 and 15 digits')
       .required('Phone Number is required'),
     address: yup.string().required('Address is required'),
     city: yup.string().required('City is required'),
@@ -113,32 +114,88 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         value instanceof File && ['image/jpeg', 'image/png', 'image/svg+xml'].includes(value.type)
       );
     }),
-    license_number: yup.string().required('License Number is required'),
-    tax_id: yup.string().required('Tax ID is required'),
-    dealer_owner_name: yup.string().required('Dealer Owner Name is required'),
-    primary_admin: yup.string().required('Primary Admin is required'),
+    license_number: yup
+      .string()
+      .max(20, 'License Number must be at most 20 characters')
+      .required('License Number is required'),
+    tax_id: yup
+      .string()
+      .max(15, 'Tax ID must be at most 15 characters')
+      .required('Tax ID is required'),
+    dealer_owner_name: yup
+      .array()
+      .min(1, 'At least one Dealer Owner must be selected')
+      .required('Dealer Owner is required'),
     status: yup.string().oneOf(['Active', 'Inactive']).default('Active'),
   });
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const highlightId = searchParams.get('highlight');
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'form'
   const [editingDealer, setEditingDealer] = useState(null);
   const [selectedLogoFile, setSelectedLogoFile] = useState(null);
+  const [openActionMenu, setOpenActionMenu] = useState(null);
 
   // Filter State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState({
-    status: '',
-    tags: [],
+  const DEALERSHIP_FILTERS_KEY = 'super_admin_dealerships_filters';
+
+  const pathname = usePathname();
+  const isRefresh = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [filters, setFilters] = useState(() => {
+    const defaultFilters = { status: '', tags: [] };
+    try {
+      if (typeof window !== 'undefined' && isRefresh) {
+        const saved = sessionStorage.getItem(DEALERSHIP_FILTERS_KEY);
+        return saved ? JSON.parse(saved) : defaultFilters;
+      }
+      return defaultFilters;
+    } catch (_) {
+      return defaultFilters;
+    }
   });
+
+  const [recentlyChangedIds, setRecentlyChangedIds] = useState(new Set());
   const [tempFilters, setTempFilters] = useState(filters);
 
-  const clearFilters = () => {
-    setFilters({ status: '', tags: [] });
-    setTempFilters({ status: '', tags: [] });
+  useEffect(() => {
+    if (isFilterOpen) {
+      setTempFilters(filters);
+    }
+  }, [isFilterOpen, filters]);
+
+  const updateFilters = (newFilters) => {
+    setFilters(newFilters);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(DEALERSHIP_FILTERS_KEY, JSON.stringify(newFilters));
+      sessionStorage.setItem('app_last_path', pathname);
+    }
   };
+
+  const clearFilters = () => {
+    const reset = { status: '', tags: [] };
+    updateFilters(reset);
+    setTempFilters(reset);
+  };
+
+  const handleRemoveFilter = (key) => {
+    const next = { ...filters };
+    if (key === 'tags') next.tags = [];
+    else next[key] = '';
+    updateFilters(next);
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(DEALERSHIP_FILTERS_KEY, JSON.stringify(filters));
+      sessionStorage.setItem('app_last_path', pathname);
+    }
+  }, [filters, pathname]);
 
   const dealerships = React.useMemo(() => {
     const list = Array.isArray(dealershipsData)
@@ -162,7 +219,13 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         } else if (item.dealer?.name) {
           dealerManagerName = item.dealer.name;
         } else {
-          const dealerId = item.dealer_owner || item.dealer_id || item.dealerId || item.dealer?.id;
+          const dealerId =
+            (typeof item.dealer_owner === 'object' && item.dealer_owner !== null
+              ? item.dealer_owner.id
+              : item.dealer_owner) ||
+            item.dealer_id ||
+            item.dealerId ||
+            item.dealer?.id;
           if (dealerId && dealers.length > 0) {
             const matchedDealer = dealers.find((d) => d.value === dealerId);
             if (matchedDealer) dealerManagerName = matchedDealer.label;
@@ -180,13 +243,29 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
             ? formatDate(item.created_at)
             : 'Recent',
         code: item.code || item.id,
+        performance: {
+          quotes:
+            item.performance?.performance?.total_quotes || item.performance?.total_quotes || 0,
+          conversion: Math.round(
+            parseFloat(
+              item.performance?.performance?.conversion_rate ||
+                item.performance?.conversion_rate ||
+                0
+            )
+          ),
+        },
       };
     });
 
     // 1. Apply Filters
     return mapped.filter((item) => {
       // Status Filter
-      if (filters.status && item.status !== filters.status) return false;
+      if (filters.status && item.status !== filters.status) {
+        // If the item was recently changed, KEEP it in the UI
+        if (!recentlyChangedIds.has(item.id)) {
+          return false;
+        }
+      }
 
       // Tag Filter
       if (filters.tags && filters.tags.length > 0) {
@@ -197,7 +276,7 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
 
       return true;
     });
-  }, [dealershipsData, dealers, filters]);
+  }, [dealershipsData, dealers, filters, recentlyChangedIds]);
 
   // Discover unique tags from dealerships for the filter drawer
   const discoveredTags = React.useMemo(() => {
@@ -239,8 +318,13 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         website: formData.website || null,
         license_number: formData.license_number || null,
         tax_id: formData.tax_id || null,
-        dealer_owner: formData.dealer_owner_name === '' ? null : formData.dealer_owner_name,
-        primary_admin_id: formData.primary_admin === '' ? null : formData.primary_admin,
+        dealer_owner: Array.isArray(formData.dealer_owner_name)
+          ? formData.dealer_owner_name.length > 0
+            ? formData.dealer_owner_name
+            : null
+          : formData.dealer_owner_name === ''
+            ? null
+            : formData.dealer_owner_name,
         status: formData.status === 'Active', // Convert to boolean (true/false) as per API Docs
       };
 
@@ -351,6 +435,7 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
               id: dealership.id,
               data: { status: statusValue },
             });
+            setRecentlyChangedIds((prev) => new Set(prev).add(dealership.id));
             Swal.fire(
               `${newStatus === 'Active' ? 'Activated' : 'Deactivated'}!`,
               `${dealership.name} has been ${newStatus.toLowerCase()}.`,
@@ -412,21 +497,20 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
           {
             name: 'contact_phone',
             label: 'Phone Number',
-            placeholder: 'xxxxxxxxxx',
-            icon: Phone,
-            onChange: (value, { setValue }) => {
-              const clean = value.replace(/[^0-9]/g, '');
-              if (clean !== value) setValue('contact_phone', clean);
-            },
+            type: 'custom',
+            component: PhoneInput,
+            props: { placeholder: 'xxxxxxxxxx', enableSearch: true },
           },
           {
             name: 'status',
             label: 'Status',
             type: 'select',
-            options: [
-              { value: 'Active', label: 'Active' },
-              { value: 'Inactive', label: 'Inactive' },
-            ],
+            options: editingDealer
+              ? [
+                  { value: 'Active', label: 'Active' },
+                  { value: 'Inactive', label: 'Inactive' },
+                ]
+              : [{ value: 'Active', label: 'Active' }],
             icon: CheckCircle,
           },
         ],
@@ -502,6 +586,7 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
             type: 'file',
             accept: 'image/*',
             preview: true,
+            placeholder: '/assets/logoplaceholder.png',
             onChange: (file) => setSelectedLogoFile(file),
             helpText: 'Recommended: SVG, PNG or JPG (Max 2MB)',
           },
@@ -510,8 +595,21 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
             label: 'License Number',
             placeholder: 'e.g. DL-123456',
             icon: Fingerprint,
+            onChange: (value, { setValue }) => {
+              const clean = value.slice(0, 20);
+              if (clean !== value) setValue('license_number', clean);
+            },
           },
-          { name: 'tax_id', label: 'Tax ID', placeholder: 'e.g. 12-3456789', icon: Fingerprint },
+          {
+            name: 'tax_id',
+            label: 'Tax ID',
+            placeholder: 'e.g. 12-3456789',
+            icon: Fingerprint,
+            onChange: (value, { setValue }) => {
+              const clean = value.slice(0, 15);
+              if (clean !== value) setValue('tax_id', clean);
+            },
+          },
         ],
       },
       {
@@ -521,18 +619,13 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         fields: [
           {
             name: 'dealer_owner_name',
-            label: 'Dealer Owner',
-            type: 'select',
-            options: dealers.length ? [...dealers] : [{ value: '', label: 'No Dealers Found' }],
-            icon: Fingerprint,
-            className: 'md:col-span-2',
-          },
-          {
-            name: 'primary_admin',
-            label: 'Primary Admin',
-            type: 'select',
-            options: admins.length ? [...admins] : [{ value: '', label: 'No Admin Found' }],
-            icon: User,
+            label: 'Dealer Owners',
+            type: 'custom',
+            component: MultiSelect,
+            props: {
+              options: dealers,
+              placeholder: 'Select Dealer Owners...',
+            },
             className: 'md:col-span-2',
           },
         ],
@@ -559,24 +652,23 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
       },
     ];
 
-    console.log('DEBUG: Editing Dealer', editingDealer);
-    console.log('DEBUG: Admins List', admins);
-
     const initialData = editingDealer
       ? {
           ...editingDealer,
-          dealer_owner_name:
-            editingDealer.dealer_owner ||
-            editingDealer.dealer_id ||
-            editingDealer.dealerId ||
-            editingDealer.dealer?.id ||
-            '',
-          primary_admin:
-            editingDealer.primary_admin_id ||
-            editingDealer.primary_admin ||
-            editingDealer.primaryAdmin ||
-            editingDealer.admin?.id ||
-            '',
+          dealer_owner_name: Array.isArray(editingDealer.dealer_owner)
+            ? editingDealer.dealer_owner.map((d) =>
+                typeof d === 'object' && d !== null ? d.id : d
+              )
+            : [
+                editingDealer.dealer_owner_id ||
+                  (typeof editingDealer.dealer_owner === 'object' &&
+                  editingDealer.dealer_owner !== null
+                    ? editingDealer.dealer_owner.id
+                    : editingDealer.dealer_owner) ||
+                  editingDealer.dealer_id ||
+                  editingDealer.dealerId ||
+                  editingDealer.dealer?.id,
+              ].filter(Boolean),
           contact_email: editingDealer.contact_email || editingDealer.contactEmail,
           contact_phone: editingDealer.contact_phone || editingDealer.contactPhone,
           tax_id: editingDealer.tax_id || editingDealer.taxId,
@@ -621,13 +713,21 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
             !isLoadingDealerships &&
             !isLoadingUsers && (
               <button
-                onClick={() => {
-                  setEditingDealer(null);
-                  setViewMode('form');
-                }}
-                className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-5 py-2.5 rounded-xl hover:bg-[rgb(var(--color-primary-dark))] transition-all text-sm font-bold shadow-lg shadow-[rgb(var(--color-primary)/0.2)] whitespace-nowrap group"
+                onClick={() => canCreate && (setEditingDealer(null), setViewMode('form'))}
+                disabled={!canCreate}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold shadow-lg transition-all ${
+                  canCreate
+                    ? 'bg-[rgb(var(--color-primary))] text-white shadow-[rgb(var(--color-primary)/0.2)] hover:bg-[rgb(var(--color-primary-dark))] hover:-translate-y-0.5'
+                    : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-70'
+                }`}
+                title={
+                  canCreate ? 'Add Dealership' : "You don't have permission to add dealerships."
+                }
               >
-                <Building2 size={18} className="group-hover:scale-110 transition-transform" />
+                <Building2
+                  size={18}
+                  className={canCreate ? 'group-hover:scale-110 transition-transform' : ''}
+                />
                 <span className="hidden sm:inline">Add Dealership</span>
                 <span className="sm:hidden">Add Dealership</span>
               </button>
@@ -644,26 +744,55 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         <DataTable
           data={dealerships}
           searchKeys={['name', 'location', 'dealer_manager', 'status']}
+          searchPlaceholder="Search dealerships by name, location, or manager..."
           highlightId={highlightId}
+          persistenceKey="super-admin-dealerships"
           itemsPerPage={preferences.items_per_page || 10}
-          sortOptions={[
-            { key: 'name', label: 'Name' },
-            { key: 'location', label: 'Location' },
-            { key: 'dealer_manager', label: 'Manager' },
-          ]}
           onFilterClick={() => setIsFilterOpen(true)}
           onClearFilters={clearFilters}
+          onRemoveExternalFilter={handleRemoveFilter}
+          hideFilterDropdowns={true}
+          externalFilters={{
+            status: filters.status,
+            tags: filters.tags,
+          }}
+          filterOptions={[
+            {
+              key: 'status',
+              label: 'Status',
+              options: [
+                { value: 'Active', label: 'Active' },
+                { value: 'Inactive', label: 'Inactive' },
+              ],
+            },
+            {
+              key: 'tags',
+              label: 'Tags',
+              options: discoveredTags.map((t) => ({
+                label: t.name || t.id,
+                value: t.id,
+              })),
+            },
+          ]}
           showClearFilter={filters.status !== '' || (filters.tags && filters.tags.length > 0)}
           extraControls={
             hideHeader && (
               <button
-                onClick={() => {
-                  setEditingDealer(null);
-                  setViewMode('form');
-                }}
-                className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 h-11 rounded-xl hover:bg-[rgb(var(--color-primary-dark))] transition-all text-sm font-bold shadow-sm whitespace-nowrap group"
+                onClick={() => canCreate && (setEditingDealer(null), setViewMode('form'))}
+                disabled={!canCreate}
+                className={`flex items-center gap-2 px-4 h-11 rounded-xl font-semibold transition-all ${
+                  canCreate
+                    ? 'bg-[rgb(var(--color-primary))] text-white shadow-sm hover:bg-[rgb(var(--color-primary-dark))]'
+                    : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-70'
+                }`}
+                title={
+                  canCreate ? 'Add Dealership' : "You don't have permission to add dealerships."
+                }
               >
-                <Building2 size={16} className="group-hover:scale-110 transition-transform" />
+                <Building2
+                  size={16}
+                  className={canCreate ? 'group-hover:scale-110 transition-transform' : ''}
+                />
                 <span>Add Dealership</span>
               </button>
             )
@@ -673,7 +802,6 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
               header: 'Dealership',
               accessor: 'name',
               sortable: true,
-              sort: true,
               render: (row) => (
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -688,7 +816,15 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
                         />
                       </div>
                     ) : (
-                      <Building2 size={20} className="text-[rgb(var(--color-text-muted))]" />
+                      <div className="relative w-full h-full p-1 opacity-50">
+                        <Image
+                          src="/assets/logoplaceholder.png"
+                          alt="Dealership"
+                          fill
+                          className="object-contain"
+                          sizes="40px"
+                        />
+                      </div>
                     )}
                   </div>
                   <div className="min-w-0">
@@ -726,7 +862,7 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
               accessor: 'status',
               config: {
                 green: ['Active'],
-                gray: ['Inactive'],
+                red: ['Inactive'],
               },
             },
             {
@@ -756,41 +892,23 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
               header: 'Actions',
               className: 'text-center',
               accessor: (row) => (
-                <div className="flex justify-center gap-2">
+                <div className="flex justify-center">
                   <button
                     onClick={(e) => {
-                      e.stopPropagation();
-                      router.push(`/dealerships/${row.id}`);
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setOpenActionMenu({
+                        id: row.id,
+                        rect,
+                        dealership: row,
+                      });
                     }}
-                    className="p-1.5 text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-info))/0.1] rounded-lg hover:text-[rgb(var(--color-info))]"
-                    title="View Details"
-                  >
-                    <Eye size={16} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingDealer(row);
-                      setViewMode('form');
-                    }}
-                    className="p-1.5 text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))/0.1] rounded-lg hover:text-[rgb(var(--color-primary))]"
-                    title="Edit"
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAction('toggleStatus', row);
-                    }}
-                    className={`p-1.5 rounded-lg transition-colors ${
-                      row.status === 'Active'
-                        ? 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-error))/0.1] hover:text-[rgb(var(--color-error))]'
-                        : 'text-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))/0.1]'
+                    className={`p-2 rounded-xl transition-all ${
+                      openActionMenu?.id === row.id
+                        ? 'bg-[rgb(var(--color-primary))] text-white shadow-md'
+                        : 'text-[rgb(var(--color-text-muted))] hover:bg-gray-100 hover:text-[rgb(var(--color-text))]'
                     }`}
-                    title={row.status === 'Active' ? 'Deactivate' : 'Activate'}
                   >
-                    {row.status === 'Active' ? <Ban size={16} /> : <CheckCircle size={16} />}
+                    <MoreVertical size={20} />
                   </button>
                 </div>
               ),
@@ -799,27 +917,96 @@ const SuperAdminDealerships = ({ onRefresh, hideHeader = false }) => {
         />
       )}
 
+      <ActionMenuPortal
+        isOpen={!!openActionMenu}
+        onClose={() => setOpenActionMenu(null)}
+        triggerRect={openActionMenu?.rect}
+        align="end"
+      >
+        <div className="p-1.5 space-y-1">
+          <button
+            onClick={() => {
+              if (canView) {
+                router.push(`/dealerships/${openActionMenu.id}`);
+                setOpenActionMenu(null);
+              }
+            }}
+            disabled={!canView}
+            className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
+              canView
+                ? 'text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))]'
+                : 'text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+            title={
+              canView ? 'View Details' : "You don't have permission to view dealership details."
+            }
+          >
+            <Eye size={16} className={canView ? 'text-blue-500' : ''} />
+            <span>View Details</span>
+          </button>
+
+          <button
+            onClick={() =>
+              canEdit &&
+              (setEditingDealer(openActionMenu.dealership),
+              setViewMode('form'),
+              setOpenActionMenu(null))
+            }
+            disabled={!canEdit}
+            className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
+              canEdit
+                ? 'text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))]'
+                : 'text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+          >
+            <Edit2 size={16} className={canEdit ? 'text-[rgb(var(--color-primary))]' : ''} />
+            <span>Edit Dealership</span>
+          </button>
+
+          <div className="h-px bg-gray-100 my-1" />
+          <button
+            onClick={() =>
+              canDeleteVal &&
+              (handleAction('delete', openActionMenu.dealership), setOpenActionMenu(null))
+            }
+            disabled={!canDeleteVal}
+            className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
+              canDeleteVal
+                ? 'text-red-600 hover:bg-[rgb(var(--color-background))]'
+                : 'text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+          >
+            <Trash2 size={16} />
+            <span>Delete Dealership</span>
+          </button>
+        </div>
+      </ActionMenuPortal>
+
       <FilterDrawer
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
         onReset={() => setTempFilters({ status: '', tags: [] })}
         onApply={() => {
-          setFilters(tempFilters);
+          updateFilters(tempFilters);
           setIsFilterOpen(false);
         }}
       >
         <div className="space-y-6">
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Status</h3>
-            <select
-              value={tempFilters.status}
-              onChange={(e) => setTempFilters((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-            >
-              <option value="">All Status</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
+            <div className="relative group">
+              <CustomSelect
+                value={tempFilters.status}
+                onChange={(e) => setTempFilters((prev) => ({ ...prev, status: e.target.value }))}
+                options={[
+                  { value: '', label: 'Status' },
+                  { value: 'Active', label: 'Active' },
+                  { value: 'Inactive', label: 'Inactive' },
+                ]}
+                placeholder="Status"
+                className="w-full"
+              />
+            </div>
           </div>
 
           <div className="space-y-3">

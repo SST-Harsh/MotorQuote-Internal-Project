@@ -8,19 +8,20 @@ const dealershipService = {
   // ==========================================
 
   // Get all dealerships
-  getAllDealerships: async (params = {}) => {
+  getAllDealerships: async (params = {}, isAdmin = false) => {
     try {
-      const response = await api.get('/dealerships', { params });
+      const prefix = isAdmin ? '/admin' : '';
+      const response = await api.get(`${prefix}/dealerships`, { params });
       return response.data;
     } catch (error) {
-      console.warn('Failed to fetch dealerships:', error);
+      console.warn(`Failed to fetch ${isAdmin ? 'admin ' : ''}dealerships:`, error);
       // Return empty array as fallback
       return { success: true, data: { dealerships: [] } };
     }
   },
 
   // Create a new dealership
-  createDealership: async (data) => {
+  createDealership: async (data, isAdmin = false) => {
     try {
       let payload = data;
       let headers = {};
@@ -56,23 +57,24 @@ const dealershipService = {
           logoDebug = data.logo_url;
         }
 
-        console.log(`DEBUG: createDealership()`, {
+        console.log(`DEBUG: createDealership(${isAdmin ? 'admin' : 'dealer'})`, {
           isFormData: payload instanceof FormData,
           logo_url: logoDebug,
           payload,
         });
       }
 
-      const response = await api.post('/dealerships', payload, { headers });
+      const prefix = isAdmin ? '/admin' : '';
+      const response = await api.post(`${prefix}/dealerships`, payload, { headers });
       return response.data;
     } catch (error) {
-      console.error('Failed to create dealership:', error);
+      console.error(`Failed to create ${isAdmin ? 'admin ' : ''}dealership:`, error);
       throw error;
     }
   },
 
   // Update an existing dealership
-  updateDealership: async (id, data) => {
+  updateDealership: async (id, data, isAdmin = false) => {
     try {
       let payload = data;
       let headers = {};
@@ -110,37 +112,40 @@ const dealershipService = {
           logoDebug = data.logo_url;
         }
 
-        console.log(`DEBUG: updateDealership(${id})`, {
+        console.log(`DEBUG: updateDealership(${id}, ${isAdmin ? 'admin' : 'dealer'})`, {
           isFormData: payload instanceof FormData,
           logo_url: logoDebug,
           payload,
         });
       }
 
-      const response = await api.put(`/dealerships/${id}`, payload, { headers });
+      const prefix = isAdmin ? '/admin' : '';
+      const response = await api.put(`${prefix}/dealerships/${id}`, payload, { headers });
       return response.data;
     } catch (error) {
-      console.error('Failed to update dealership:', error);
+      console.error(`Failed to update ${isAdmin ? 'admin ' : ''}dealership:`, error);
       throw error;
     }
   },
 
-  deleteDealership: async (id) => {
+  deleteDealership: async (id, isAdmin = false) => {
     try {
-      const response = await api.delete(`/dealerships/${id}`);
+      const prefix = isAdmin ? '/admin' : '';
+      const response = await api.delete(`${prefix}/dealerships/${id}`);
       return response.data;
     } catch (error) {
-      console.error('Failed to delete dealership:', error);
+      console.error(`Failed to delete ${isAdmin ? 'admin ' : ''}dealership:`, error);
       throw error;
     }
   },
 
-  getById: async (id) => {
+  getById: async (id, isAdmin = false) => {
     try {
-      const response = await api.get(`/dealerships/${id}`);
+      const prefix = isAdmin ? '/admin' : '';
+      const response = await api.get(`${prefix}/dealerships/${id}`);
       return response.data;
     } catch (error) {
-      console.error('Failed to fetch dealership:', error);
+      console.error(`Failed to fetch ${isAdmin ? 'admin ' : ''}dealership:`, error);
       throw error;
     }
   },
@@ -217,9 +222,10 @@ const dealershipService = {
     }
   },
 
-  getDealershipOptions: async () => {
+  getDealershipOptions: async (isAdmin = false) => {
     try {
-      const response = await api.get('/dealerships');
+      const prefix = isAdmin ? '/admin' : '';
+      const response = await api.get(`${prefix}/dealerships`);
       const items = Array.isArray(response.data)
         ? response.data
         : response.data?.dealerships ||

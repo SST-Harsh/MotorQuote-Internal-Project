@@ -17,6 +17,12 @@ export default function ProtectedRoute({ roles = [], children }) {
         Cookies.remove('role');
         router.replace('/login');
         setAllowed(false);
+        // Fallback for hard redirect if router.replace is ignored
+        setTimeout(() => {
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }, 800);
       }
       return;
     }

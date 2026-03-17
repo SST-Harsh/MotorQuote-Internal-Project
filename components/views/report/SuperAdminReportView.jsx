@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   AreaChart as AreaIcon,
 } from 'lucide-react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   BarChart,
   Bar,
@@ -41,8 +42,44 @@ import { formatDate } from '@/utils/i18n';
 export default function SuperAdminReportsView() {
   const { preferences } = usePreference();
   const { user } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
+  const REPORT_DATE_RANGE_KEY = 'super_admin_report_date_range';
+
   const [platformData, setPlatformData] = useState(null);
-  const [dateRange, setDateRange] = useState('all');
+  const pathname = usePathname();
+  const isRefresh = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [dateRange, setDateRange] = useState(() => {
+    if (typeof window !== 'undefined' && isRefresh) {
+      return sessionStorage.getItem(REPORT_DATE_RANGE_KEY) || 'all';
+    }
+    return 'all';
+  });
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(REPORT_DATE_RANGE_KEY, dateRange);
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [dateRange, pathname]);
+
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (highlightId) {
+      setDateRange('all');
+      setSearchTerm('');
+    }
+  }, [highlightId]);
+
+  const handleRemoveFilter = (key) => {
+    if (key === 'dateRange') setDateRange('all');
+  };
 
   const calculateParams = React.useCallback((rangeValue) => {
     const params = {
@@ -62,8 +99,13 @@ export default function SuperAdminReportsView() {
       const toDateStr = (d) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-      params.start_date = toDateStr(start);
-      params.end_date = toDateStr(end);
+      const sDate = toDateStr(start);
+      const eDate = toDateStr(end);
+
+      params.start_date = sDate;
+      params.end_date = eDate;
+      params.startDate = sDate;
+      params.endDate = eDate;
     }
 
     return params;
@@ -102,6 +144,14 @@ export default function SuperAdminReportsView() {
     console.log('🔄 Analytics Fetch Trigger:', { dateRange });
     fetchAnalytics();
   }, [fetchAnalytics, dateRange]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!isExportOpen) return;
+    const handleClickOutside = () => setIsExportOpen(false);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [isExportOpen]);
 
   const handleExport = async (type, format) => {
     try {
@@ -196,18 +246,32 @@ export default function SuperAdminReportsView() {
             </div>
 
             {/* Export Dropdown */}
-            <div className="relative group">
-              <button className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-md">
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExportOpen(!isExportOpen);
+                }}
+                className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-md"
+              >
                 <Download size={18} />
                 <span className="font-bold text-sm hidden sm:inline">Export</span>
-                <ChevronDown size={14} />
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isExportOpen ? 'rotate-180' : ''}`}
+                />
               </button>
-              <div className="absolute right-0 top-full mt-2 w-56 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl overflow-hidden invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all z-20">
+              <div
+                className={`absolute right-0 top-full mt-2 w-56 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl overflow-hidden transition-all z-50 ${isExportOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}
+              >
                 <div className="p-2 border-b border-[rgb(var(--color-border))] text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase">
                   Quotes Data
                 </div>
                 <button
-                  onClick={() => handleExport('quotes', 'csv')}
+                  onClick={() => {
+                    handleExport('quotes', 'csv');
+                    setIsExportOpen(false);
+                  }}
                   className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
                 >
                   <FileText size={14} className="text-blue-500" /> Export Quotes (CSV)
@@ -217,13 +281,19 @@ export default function SuperAdminReportsView() {
                   Performance Reports
                 </div>
                 <button
-                  onClick={() => handleExport('dealership_performance', 'excel')}
+                  onClick={() => {
+                    handleExport('dealership_performance', 'excel');
+                    setIsExportOpen(false);
+                  }}
                   className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
                 >
                   <FileText size={14} className="text-green-500" /> Dealerships (Excel)
                 </button>
                 <button
-                  onClick={() => handleExport('dealership_performance', 'csv')}
+                  onClick={() => {
+                    handleExport('dealership_performance', 'csv');
+                    setIsExportOpen(false);
+                  }}
                   className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
                 >
                   <FileText size={14} className="text-blue-500" /> Dealerships (CSV)
@@ -236,7 +306,12 @@ export default function SuperAdminReportsView() {
           <StatCard
             key="total-revenue"
             title="Total Revenue"
-            value={`$${Number(overview.total_revenue || 0).toLocaleString()}`}
+            value={new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+              notation: 'compact',
+              maximumFractionDigits: 2,
+            }).format(Number(overview.total_revenue || 0))}
             icon={<TrendingUp size={20} />}
             trend={
               summary.monthly_growth
@@ -251,7 +326,12 @@ export default function SuperAdminReportsView() {
           <StatCard
             key="avg-quote"
             title="Avg Quote Amount"
-            value={`$${Number(overview.avg_quote_amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+            value={new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+              notation: 'compact',
+              maximumFractionDigits: 2,
+            }).format(Number(overview.avg_quote_amount || 0))}
             icon={<DollarSign size={20} />}
             helperText="Platform average"
           />,
@@ -275,7 +355,7 @@ export default function SuperAdminReportsView() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Trends Line Chart */}
-        <div className="lg:col-span-2 bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm min-h-[400px]">
+        <div className="lg:col-span-2 bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm overflow-hidden">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-bold text-[rgb(var(--color-text))] flex items-center gap-2">
               <AreaIcon size={18} className="text-blue-500" />
@@ -381,7 +461,7 @@ export default function SuperAdminReportsView() {
         </div>
 
         {/* Status Distribution Pie Chart */}
-        <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm min-h-[400px] flex flex-col items-center justify-center">
+        <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm overflow-hidden flex flex-col items-center justify-center">
           <h3 className="font-bold text-[rgb(var(--color-text))] flex items-center gap-2 mb-6 self-start">
             <PieIcon size={18} className="text-purple-500" />
             Quote Distribution
@@ -433,30 +513,44 @@ export default function SuperAdminReportsView() {
         title="Top Performing Dealerships"
         data={platform.top_dealerships || []}
         itemsPerPage={preferences.items_per_page || 10}
+        persistenceKey="super-admin-reports-dealerships"
+        onRemoveExternalFilter={handleRemoveFilter}
+        hideFilterDropdowns={true}
         columns={[
           {
             header: 'Dealership',
+            sortable: true,
+            sortKey: (row) => row.dealership_name || row.name,
             accessor: (row) => row.dealership_name || row.name,
             className: 'font-medium text-[rgb(var(--color-text))]',
           },
           {
             header: 'Total Revenue',
+            sortable: true,
+            sortKey: 'total_revenue',
             accessor: (row) => `$${Number(row.total_revenue || 0).toLocaleString()}`,
             className: 'font-medium text-[rgb(var(--color-text))]',
           },
           {
             header: 'Avg Quote',
+            sortable: true,
+            sortKey: 'avg_quote_amount',
             accessor: (row) =>
               `$${Number(row.avg_quote_amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
             className: 'text-center font-medium',
           },
           {
             header: 'Quotes',
+            sortable: true,
+            sortKey: 'quote_count',
             accessor: (row) => row.quote_count || row.quotes || 0,
             className: 'text-[rgb(var(--color-text-muted))] text-center',
           },
           {
             header: 'Approval Rate',
+            sortable: true,
+            sortKey: (row) =>
+              row.approval_rate !== undefined ? row.approval_rate : row.conversion_rate,
             accessor: (row) => {
               const rate =
                 row.approval_rate !== undefined ? row.approval_rate : row.conversion_rate;
@@ -479,6 +573,10 @@ export default function SuperAdminReportsView() {
           },
         ]}
         searchKeys={['dealership_name', 'name']}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search dealerships by name..."
+        highlightId={highlightId}
       />
     </div>
   );

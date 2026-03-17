@@ -25,6 +25,8 @@ const Input = forwardRef(
     const handleKeyDown = (e) => {
       // Number validation: allow backspace, tab, enter, delete, arrows, numbers
       if (type === 'number') {
+        // Always allow keyboard shortcuts (Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, etc.)
+        if (e.ctrlKey || e.metaKey) return;
         const allowedKeys = [
           'Backspace',
           'Tab',
@@ -80,7 +82,7 @@ const Input = forwardRef(
               placeholder={placeholder}
               value={value}
               onChange={onChange}
-              className={`w-full py-3 border rounded-md focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm min-h-[100px] resize-y ${
+              className={`w-full py-3 border rounded-md focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm min-h-[100px] resize-y disabled:opacity-60 disabled:bg-gray-50/50 disabled:cursor-not-allowed ${
                 error
                   ? 'border-error bg-error/5 focus:ring-error/10 focus:border-error'
                   : 'border-border bg-surface'
@@ -92,10 +94,11 @@ const Input = forwardRef(
               ref={ref}
               type={type}
               placeholder={placeholder}
+              value={value}
               onChange={onChange}
               onKeyDown={handleKeyDown}
               onInput={handleInput}
-              className={`w-full py-3 border rounded-md focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm ${
+              className={`w-full py-3 border rounded-md focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm disabled:opacity-60 disabled:bg-gray-50/50 disabled:cursor-not-allowed ${
                 error
                   ? 'border-error bg-error/5 focus:ring-error/10 focus:border-error'
                   : 'border-border bg-surface'

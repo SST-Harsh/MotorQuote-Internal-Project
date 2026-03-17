@@ -54,7 +54,7 @@ export default function StaffDetailPage({ params }) {
 
       const [activitiesRes, performanceRes] = await Promise.all([
         isDealerManager
-          ? staffService.getStaffActivities(staffId, { limit: 10 }).catch(() => [])
+          ? staffService.getStaffActivities(staffId, { limit: 40 }).catch(() => [])
           : userService.getUserActivities(staffId).catch(() => []),
         isDealerManager
           ? staffService.getStaffPerformance(staffId).catch(() => null)

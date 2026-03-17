@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useSearchParams, usePathname } from 'next/navigation';
 import {
   Bell,
   Send,
@@ -16,6 +17,7 @@ import {
   Loader2,
   Eye,
   ChevronDown,
+  Filter,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import * as yup from 'yup';
@@ -26,10 +28,12 @@ import DataTable from '../../common/DataTable';
 import { SkeletonTable, SkeletonCard } from '../../common/Skeleton';
 import TabNavigation from '@/components/common/TabNavigation';
 import CustomDateTimePicker from '../../common/CustomDateTimePicker';
+import CustomSelect from '../../common/CustomSelect';
 import PageHeader from '@/components/common/PageHeader';
 import { useNotifications } from '@/context/NotificationContext';
 import dayjs from 'dayjs';
 import { formatDateTime } from '@/utils/i18n';
+import { canViewNotifications, canCreateNotifications } from '@/utils/roleUtils';
 
 // Helper to determine if a notification is read by a given user
 function isNotificationRead(notification, userId) {
@@ -42,20 +46,53 @@ function isNotificationRead(notification, userId) {
 
 export default function SuperAdminNotifications() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('broadcast');
+  const pathname = usePathname();
+  const NOTIF_TAB_KEY = 'super_admin_notif_active_tab';
+  const isRefresh = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined' && isRefresh) {
+      return sessionStorage.getItem(NOTIF_TAB_KEY) || 'broadcast';
+    }
+    return 'broadcast';
+  });
   const [broadcastPrefill, setBroadcastPrefill] = useState(null);
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId');
+  const canView = canViewNotifications(user);
+  const canCreate = canCreateNotifications(user);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(NOTIF_TAB_KEY, activeTab);
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [activeTab, pathname]);
+
+  useEffect(() => {
+    if (!canCreate && activeTab === 'broadcast') {
+      setActiveTab('history');
+    }
+  }, [canCreate, activeTab]);
+
+  useEffect(() => {
+    if (highlightId) {
+      setActiveTab('history');
+    }
+  }, [highlightId]);
   const tabs = [
-    { key: 'broadcast', label: 'Broadcast', icon: Megaphone },
+    { key: 'broadcast', label: 'Broadcast', icon: Megaphone, disabled: !canCreate },
     { key: 'history', label: 'History', icon: Bell },
-    { key: 'templates', label: 'Templates', icon: FileText },
-  ];
+    { key: 'templates', label: 'Templates', icon: FileText, disabled: !canCreate },
+  ].filter((tab) => !tab.disabled);
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       <PageHeader
         title="Notifications"
         subtitle="Manage system alerts, announcements, and templates."
-        icon={<Bell size={24} />}
         gradient
       />
 
@@ -64,17 +101,32 @@ export default function SuperAdminNotifications() {
 
       {/* Content */}
       <div className="p-4 sm:p-6 shadow-sm min-h-[500px] transition-all duration-300">
-        {activeTab === 'broadcast' && (
-          <BroadcastForm prefillData={broadcastPrefill} onClear={() => setBroadcastPrefill(null)} />
-        )}
-        {activeTab === 'history' && <NotificationHistory />}
-        {activeTab === 'templates' && (
-          <TemplateManager
-            onSend={(template) => {
-              setBroadcastPrefill(template);
-              setActiveTab('broadcast');
-            }}
-          />
+        {!canView ? (
+          <div className="flex flex-col items-center justify-center p-12 bg-[rgb(var(--color-surface))] rounded-2xl border border-[rgb(var(--color-error))/0.2]">
+            <Bell size={48} className="text-[rgb(var(--color-error))] opacity-20 mb-4" />
+            <h3 className="text-lg font-bold text-[rgb(var(--color-text))]">Access Denied</h3>
+            <p className="text-[rgb(var(--color-text-muted))] text-sm">
+              You don&apos;t have permission to view notifications.
+            </p>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'broadcast' && canCreate && (
+              <BroadcastForm
+                prefillData={broadcastPrefill}
+                onClear={() => setBroadcastPrefill(null)}
+              />
+            )}
+            {activeTab === 'history' && <NotificationHistory highlightId={highlightId} />}
+            {activeTab === 'templates' && canCreate && (
+              <TemplateManager
+                onSend={(template) => {
+                  setBroadcastPrefill(template);
+                  setActiveTab('broadcast');
+                }}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -131,12 +183,10 @@ const templateValidationSchema = yup.object({
     .required('Template name is required')
     .min(3, 'Name must be at least 3 characters')
     .max(100, 'Name must not exceed 100 characters'),
-  description: yup.string().max(500, 'Description must not exceed 500 characters').nullable(),
   type: yup
     .string()
     .required('Type is required')
-    .oneOf(['announcement', 'alert', 'email', 'system'], 'Invalid template type'),
-  category: yup.string().required('Category is required'),
+    .oneOf(['announcement', 'alert'], 'Invalid template type'),
   titleTemplate: yup
     .string()
     .required('Title template is required')
@@ -156,11 +206,11 @@ const templateValidationSchema = yup.object({
 
 function BroadcastForm({ prefillData, onClear }) {
   const [formData, setFormData] = useState({
-    type: 'announcement',
+    type: '',
     title: '',
     message: '',
-    priority: 'medium',
-    targetAudience: 'all',
+    priority: '',
+    targetAudience: '',
     expiresAt: '',
     scheduledAt: '',
   });
@@ -172,11 +222,14 @@ function BroadcastForm({ prefillData, onClear }) {
   // Apply prefill data when it changes
   useEffect(() => {
     if (prefillData) {
+      const rawType = prefillData.type || 'announcement';
+      // Map template-only types (e.g. 'system') to valid broadcast types
+      const broadcastType = ['announcement', 'alert'].includes(rawType) ? rawType : 'announcement';
       setFormData((prev) => ({
         ...prev,
         title: prefillData.title_template || prefillData.titleTemplate || '',
         message: prefillData.message_template || prefillData.messageTemplate || '',
-        type: prefillData.type || 'announcement',
+        type: broadcastType,
         priority: prefillData.default_priority || prefillData.defaultPriority || 'medium',
         targetAudience:
           prefillData.default_target_audience || prefillData.defaultTargetAudience || 'all',
@@ -311,233 +364,263 @@ function BroadcastForm({ prefillData, onClear }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-      {(formData.title || formData.message) && (
-        <div className="bg-gradient-to-br from-[rgb(var(--color-primary))]/5 to-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase">
-              Preview
-            </span>
-            <span
-              className={`text-xs font-medium px-2 py-0.5 rounded-full ${priorityColors[formData.priority]}`}
-            >
-              {formData.priority}
-            </span>
+    <div className="w-full transition-all duration-300">
+      {/* Form Container */}
+      <div className="bg-transparent overflow-hidden">
+        {/* Card Header - Minimalized */}
+        <div className="pb-5 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-[rgb(var(--color-primary))/0.1] flex items-center justify-center">
+            <Megaphone size={20} className="text-[rgb(var(--color-primary))]" />
           </div>
-          {formData.title && (
-            <h4 className="font-bold text-[rgb(var(--color-text))]">{formData.title}</h4>
-          )}
-          {formData.message && (
-            <p className="text-sm text-[rgb(var(--color-text-muted))]">{formData.message}</p>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-            Type
-          </label>
-          <div className="relative group">
-            <select
-              value={formData.type}
-              onChange={(e) => handleFieldChange('type', e.target.value)}
-              className="w-full appearance-none bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:border-transparent transition-all pr-10 hover:border-[rgb(var(--color-primary)/0.5)]"
-              data-testid="broadcast-type-select"
-            >
-              <option value="announcement">📢 Announcement</option>
-              <option value="alert">⚠️ System Alert</option>
-            </select>
-            <ChevronDown
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none group-hover:text-[rgb(var(--color-primary))] transition-colors"
-              size={16}
-            />
-          </div>
-          {validationErrors.type && (
-            <p className="text-red-500 text-[10px] mt-1 font-medium">{validationErrors.type}</p>
-          )}
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-            Priority
-          </label>
-          <div className="relative group">
-            <select
-              value={formData.priority}
-              onChange={(e) => handleFieldChange('priority', e.target.value)}
-              className="w-full appearance-none bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:border-transparent transition-all pr-10 hover:border-[rgb(var(--color-primary)/0.5)]"
-              data-testid="broadcast-priority-select"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-              <option value="critical">Critical</option>
-            </select>
-            <ChevronDown
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none group-hover:text-[rgb(var(--color-primary))] transition-colors"
-              size={16}
-            />
-          </div>
-          {validationErrors.priority && (
-            <p className="text-red-500 text-[10px] mt-1 font-medium">{validationErrors.priority}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-            Scheduled At (Optional)
-          </label>
-          <CustomDateTimePicker
-            value={formData.scheduledAt}
-            onChange={(val) => setFormData({ ...formData, scheduledAt: val })}
-          />
-          <p className="mt-1 text-xs text-[rgb(var(--color-text-muted))]">
-            Leave empty to send immediately.
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-            Expires At (Optional)
-          </label>
-          <CustomDateTimePicker
-            value={formData.expiresAt}
-            onChange={(val) => setFormData({ ...formData, expiresAt: val })}
-          />
-          <p className="mt-1 text-xs text-[rgb(var(--color-text-muted))]">
-            When this notification should be hidden.
-          </p>
-          {validationErrors.expiresAt && (
-            <p className="text-red-500 text-[10px] mt-1 font-medium">
-              {validationErrors.expiresAt}
+          <div>
+            <h3 className="font-bold text-[rgb(var(--color-text))]">Send Broadcast</h3>
+            <p className="text-xs text-[rgb(var(--color-text-muted))]">
+              Compose and send a notification to your audience
             </p>
-          )}
+          </div>
         </div>
-      </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-          Target Audience
-        </label>
-        <div className="relative group">
-          <select
-            value={formData.targetAudience}
-            onChange={(e) => handleFieldChange('targetAudience', e.target.value)}
-            className={`w-full appearance-none bg-[rgb(var(--color-background))] border rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all pr-10 hover:border-[rgb(var(--color-primary)/0.5)] ${validationErrors.targetAudience ? 'border-red-500 shadow-sm' : 'border-[rgb(var(--color-border))]'}`}
-            data-testid="broadcast-audience-select"
-            disabled={loadingRoles}
-          >
-            <option value="all">🌐 All Users</option>
-            {roles.map((role) => {
-              const roleName = role.name || `Role ${role.id}`;
-              const roleValue = roleName.toLowerCase();
-              const displayName = roleName
-                .split('_')
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
-
-              return (
-                <option key={role.id} value={roleValue}>
-                  {displayName}
-                </option>
-              );
-            })}
-          </select>
-          <ChevronDown
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none group-hover:text-[rgb(var(--color-primary))] transition-colors"
-            size={16}
-          />
-        </div>
-        {validationErrors.targetAudience && (
-          <p className="text-red-500 text-[10px] mt-1 font-medium">
-            {validationErrors.targetAudience}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-          Title *
-        </label>
-        <input
-          type="text"
-          value={formData.title}
-          onChange={(e) => handleFieldChange('title', e.target.value)}
-          className={`w-full bg-[rgb(var(--color-background))] border rounded-lg px-4 py-2.5 text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text-muted))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all ${validationErrors.title ? 'border-red-500 shadow-sm' : 'border-[rgb(var(--color-border))]'}`}
-          placeholder="e.g., System Maintenance Scheduled"
-          data-testid="broadcast-title-input"
-        />
-        {validationErrors.title && (
-          <p className="text-red-500 text-xs mt-1 font-medium">{validationErrors.title}</p>
-        )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
-          Message *
-        </label>
-        <textarea
-          rows="5"
-          value={formData.message}
-          onChange={(e) => handleFieldChange('message', e.target.value)}
-          className={`w-full bg-[rgb(var(--color-background))] border rounded-lg px-4 py-3 text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text-muted))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all resize-none ${validationErrors.message ? 'border-red-500 shadow-sm' : 'border-[rgb(var(--color-border))]'}`}
-          placeholder="Enter your message here..."
-          data-testid="broadcast-message-textarea"
-        ></textarea>
-        {validationErrors.message && (
-          <p className="text-red-500 text-xs mt-1 font-medium">{validationErrors.message}</p>
-        )}
-        <p className="text-xs text-[rgb(var(--color-text-muted))] mt-2">
-          {formData.message.length} characters
-        </p>
-      </div>
-
-      <div className="pt-4 flex gap-3">
-        <button
-          type="submit"
-          disabled={sending}
-          className="flex items-center justify-center gap-2 bg-[rgb(var(--color-primary))] text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg shadow-[rgb(var(--color-primary))]/20"
-          data-testid="broadcast-submit-button"
-        >
-          {sending ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              Sending...
-            </>
-          ) : (
-            <>
-              <Send size={18} />
-              Send Broadcast
-            </>
+        <form onSubmit={handleSubmit} className="pb-8 pl-2 pr-2 pt-4 space-y-8">
+          {/* Live Preview */}
+          {(formData.title || formData.message) && (
+            <div className="bg-gradient-to-br from-[rgb(var(--color-primary))]/5 to-[rgb(var(--color-background))] border border-[rgb(var(--color-primary))]/20 rounded-xl p-4 space-y-1.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-[rgb(var(--color-primary))] uppercase tracking-wider">
+                  Live Preview
+                </span>
+                {formData.priority && (
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${priorityColors[formData.priority] || 'bg-[rgb(var(--color-surface))] text-[rgb(var(--color-text-muted))]'}`}
+                  >
+                    {formData.priority}
+                  </span>
+                )}
+              </div>
+              {formData.title && (
+                <h4 className="font-bold text-sm text-[rgb(var(--color-text))]">
+                  {formData.title}
+                </h4>
+              )}
+              {formData.message && (
+                <p className="text-xs text-[rgb(var(--color-text-muted))] leading-relaxed">
+                  {formData.message}
+                </p>
+              )}
+            </div>
           )}
-        </button>
-        {(formData.title || formData.message) && (
-          <button
-            type="button"
-            onClick={() => setFormData({ ...formData, title: '', message: '' })}
-            className="px-4 py-3 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors"
-          >
-            Clear
-          </button>
-        )}
+          {/* Config Row: Type | Priority | Audience */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Type */}
+            <div>
+              <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
+                Type
+              </label>
+              <CustomSelect
+                value={formData.type}
+                onChange={(e) => handleFieldChange('type', e.target.value)}
+                options={[
+                  { value: 'announcement', label: '📢 Announcement' },
+                  { value: 'alert', label: '⚠️ System Alert' },
+                ]}
+                placeholder="Select Type"
+                error={!!validationErrors.type}
+              />
+              {validationErrors.type && (
+                <p className="text-red-500 text-[10px] mt-1 font-medium">{validationErrors.type}</p>
+              )}
+            </div>
+
+            {/* Priority */}
+            <div>
+              <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
+                Priority
+              </label>
+              <CustomSelect
+                value={formData.priority}
+                onChange={(e) => handleFieldChange('priority', e.target.value)}
+                options={[
+                  { value: 'low', label: 'Low' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'high', label: 'High' },
+                  { value: 'urgent', label: 'Urgent' },
+                  { value: 'critical', label: 'Critical' },
+                ]}
+                placeholder="Select Priority"
+                error={!!validationErrors.priority}
+              />
+              {validationErrors.priority && (
+                <p className="text-red-500 text-[10px] mt-1 font-medium">
+                  {validationErrors.priority}
+                </p>
+              )}
+            </div>
+
+            {/* Target Audience */}
+            <div>
+              <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
+                Audience
+              </label>
+              <CustomSelect
+                value={formData.targetAudience}
+                onChange={(e) => handleFieldChange('targetAudience', e.target.value)}
+                options={[
+                  { value: 'all', label: '🌐 All Users' },
+                  ...roles
+                    .filter((role) => {
+                      const roleKey = (role.name || role.key || '')
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]/g, '');
+                      return roleKey !== 'superadmin' && roleKey !== 'admin';
+                    })
+                    .map((role) => {
+                      const roleName = role.name || role.key || `Role ${role.id}`;
+                      const roleValue = (role.name || role.key || '').toLowerCase();
+                      const displayName =
+                        role.display_name ||
+                        roleName
+                          .split('_')
+                          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                          .join(' ');
+                      return { value: roleValue, label: displayName };
+                    }),
+                ]}
+                placeholder="Select Audience"
+                isDisabled={loadingRoles}
+                error={!!validationErrors.targetAudience}
+              />
+              {validationErrors.targetAudience && (
+                <p className="text-red-500 text-[10px] mt-1 font-medium">
+                  {validationErrors.targetAudience}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Scheduled At — full width now that Expires At is removed */}
+          <div className="pt-2">
+            <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2.5">
+              Scheduled At{' '}
+              <span className="text-[rgb(var(--color-text-muted))] font-normal text-xs ml-1">
+                (Optional)
+              </span>
+            </label>
+            <CustomDateTimePicker
+              value={formData.scheduledAt}
+              onChange={(val) => setFormData({ ...formData, scheduledAt: val })}
+            />
+            <p className="mt-1.5 text-xs text-[rgb(var(--color-text-muted))]">
+              Leave empty to send immediately.
+            </p>
+          </div>
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
+              Title <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="title"
+              value={formData.title}
+              onChange={(e) => handleFieldChange('title', e.target.value)}
+              placeholder="e.g., System Maintenance Scheduled"
+              className={`w-full h-12 px-4 bg-[rgb(var(--color-background))] border ${validationErrors.title ? 'border-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5' : 'border-[rgb(var(--color-border))]'} rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))]/20 focus:border-[rgb(var(--color-primary))] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              data-testid="broadcast-title-input"
+            />
+            {validationErrors.title && (
+              <p className="text-red-500 text-xs mt-1 font-medium">{validationErrors.title}</p>
+            )}
+          </div>
+
+          {/* Message */}
+          <div>
+            <label className="block text-sm font-semibold text-[rgb(var(--color-text))] mb-2">
+              Message <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              name="message"
+              rows={6}
+              value={formData.message}
+              onChange={(e) => handleFieldChange('message', e.target.value)}
+              placeholder="Enter your broadcast message here..."
+              className={`w-full px-4 py-3 bg-[rgb(var(--color-background))] border ${validationErrors.message ? 'border-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5' : 'border-[rgb(var(--color-border))]'} rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))]/20 focus:border-[rgb(var(--color-primary))] transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              data-testid="broadcast-message-textarea"
+            ></textarea>
+            {validationErrors.message && (
+              <p className="text-red-500 text-xs mt-1 font-medium">{validationErrors.message}</p>
+            )}
+            <p className="text-xs text-[rgb(var(--color-text-muted))] mt-1 text-right">
+              {formData.message.length}/500 characters
+            </p>
+          </div>
+
+          {/* Footer */}
+          <div className="pt-2 flex items-center gap-3 border-t border-[rgb(var(--color-border))]">
+            <button
+              type="submit"
+              disabled={sending}
+              className="flex items-center justify-center gap-2 bg-[rgb(var(--color-primary))] text-white px-6 py-2.5 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg shadow-[rgb(var(--color-primary))]/20 text-sm"
+              data-testid="broadcast-submit-button"
+            >
+              {sending ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send size={16} />
+                  Send Broadcast
+                </>
+              )}
+            </button>
+            {(formData.title || formData.message) && (
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData({ ...formData, title: '', message: '', scheduledAt: '' })
+                }
+                className="px-4 py-2.5 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-lg transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </form>
       </div>
-    </form>
+    </div>
   );
 }
 
-function NotificationHistory() {
+function NotificationHistory({ highlightId }) {
+  const NOTIF_HISTORY_FILTER_KEY = 'super_admin_notif_history_filter';
+
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const pathname = usePathname();
+  const isRefresh = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [filter, setFilter] = useState(() => {
+    if (typeof window !== 'undefined' && isRefresh) {
+      return sessionStorage.getItem(NOTIF_HISTORY_FILTER_KEY) || 'all';
+    }
+    return 'all';
+  });
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(NOTIF_HISTORY_FILTER_KEY, filter);
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [filter, pathname]);
 
-  const loadHistory = async () => {
+  const handleRemoveFilter = (key) => {
+    if (key === 'status') setFilter('all');
+  };
+
+  const loadHistory = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await notificationService.getAllNotifications();
@@ -555,9 +638,45 @@ function NotificationHistory() {
       };
 
       const list = extractData(res, 'notifications');
-      // Filter out notifications created by other super admins if needed (optional based on intent)
-      // But usually super admins see everything.
-      setNotifications(list);
+      const currentUserId = user?.id != null ? user.id.toString() : undefined;
+      const filteredList = list.filter((n) => {
+        if (!n) return false;
+        const senderIdRaw =
+          n.created_by ?? n.sender_id ?? n.senderId ?? n.sender?.id ?? n.creator_id;
+        const senderId = senderIdRaw != null ? senderIdRaw.toString() : undefined;
+
+        // 1. Show notifications created by this user
+        if (currentUserId != null && senderId === currentUserId) return true;
+
+        // 2. Show notifications targeted to this specific user
+        const targetUserIds = n.target_user_ids || n.targetUserIds;
+        if (
+          Array.isArray(targetUserIds) &&
+          currentUserId != null &&
+          targetUserIds.some((id) => id?.toString() === currentUserId)
+        )
+          return true;
+
+        // 3. Show notifications targeted to super_admin or all
+        const targetRoles = n.target_roles || n.targetRoles;
+        if (Array.isArray(targetRoles) && targetRoles.length > 0) {
+          const normalizedTargetRoles = targetRoles.map((r) =>
+            r.toLowerCase().replace(/[_\s]/g, '')
+          );
+          if (normalizedTargetRoles.includes('superadmin') || normalizedTargetRoles.includes('all'))
+            return true;
+        }
+
+        const rawTarget = n.target_audience || n.targetAudience || '';
+        const target = (typeof rawTarget === 'string' ? rawTarget : String(rawTarget || ''))
+          .toLowerCase()
+          .replace(/[_\s]/g, '');
+        if (target === 'superadmin' || target === 'all') return true;
+
+        return false;
+      });
+
+      setNotifications(filteredList);
     } catch (error) {
       console.error('Error loading history:', error);
       Swal.fire({
@@ -569,7 +688,11 @@ function NotificationHistory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   const { markAllAsRead: markAllAsReadContext, updateNotification: updateNotificationContext } =
     useNotifications();
@@ -1037,6 +1160,9 @@ function NotificationHistory() {
         onRefresh={loadHistory}
         searchable
         searchKeys={['title', 'message', 'type', 'priority']}
+        searchPlaceholder="Search notifications by title, message, or type..."
+        showClearFilter={false}
+        highlightId={highlightId}
       />
     </div>
   );
@@ -1272,28 +1398,32 @@ function TemplateManager({ onSend }) {
 function TemplateForm({ template, onCancel, onSuccess }) {
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    type: 'system',
-    category: 'operational',
+    type: '',
     titleTemplate: '',
     messageTemplate: '',
-    defaultPriority: 'medium',
-    defaultTargetAudience: 'all',
+    defaultPriority: '',
+    defaultTargetAudience: '',
     isActive: true,
-    variables: [],
   });
 
   const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+  const [initialData, setInitialData] = useState(null);
+
+  const isDirty = React.useMemo(() => {
+    if (!template) return true; // Always dirty for new templates
+    if (!initialData) return false;
+    return JSON.stringify(formData) !== JSON.stringify(initialData);
+  }, [formData, initialData, template]);
 
   useEffect(() => {
     if (template) {
-      setFormData({
-        ...template,
+      const rawType = template.type || 'announcement';
+      const data = {
+        name: template.name || '',
+        type: ['announcement', 'alert'].includes(rawType) ? rawType : 'announcement',
         titleTemplate: template.title_template || template.titleTemplate || '',
         messageTemplate: template.message_template || template.messageTemplate || '',
-        description: template.description || '',
-        category: template.category || 'operational',
         defaultPriority: template.default_priority || template.defaultPriority || 'medium',
         defaultTargetAudience:
           template.default_target_audience || template.defaultTargetAudience || 'all',
@@ -1303,20 +1433,21 @@ function TemplateForm({ template, onCancel, onSuccess }) {
             : template.isActive !== undefined
               ? template.isActive
               : true,
-      });
+      };
+      setFormData(data);
+      setInitialData(JSON.parse(JSON.stringify(data)));
     } else {
-      setFormData({
+      const data = {
         name: '',
-        description: '',
-        type: 'system',
-        category: 'operational',
+        type: '',
         titleTemplate: '',
         messageTemplate: '',
-        defaultPriority: 'medium',
-        defaultTargetAudience: 'all',
+        defaultPriority: '',
+        defaultTargetAudience: '',
         isActive: true,
-        variables: [],
-      });
+      };
+      setFormData(data);
+      setInitialData(null);
     }
   }, [template]);
 
@@ -1369,9 +1500,7 @@ function TemplateForm({ template, onCancel, onSuccess }) {
 
       const payload = {
         name: formData.name,
-        description: formData.description || '',
-        type: formData.type || 'system',
-        category: formData.category || 'operational',
+        type: formData.type || 'announcement',
         title_template: formData.titleTemplate,
         message_template: formData.messageTemplate,
         default_priority: formData.defaultPriority || 'medium',
@@ -1417,9 +1546,9 @@ function TemplateForm({ template, onCancel, onSuccess }) {
   };
 
   return (
-    <div className="bg-[rgb(var(--color-surface))] rounded-xl border border-[rgb(var(--color-border))] overflow-hidden">
+    <div className="bg-[rgb(var(--color-surface))] overflow-hidden">
       {/* Form Header */}
-      <div className="p-6 border-b border-[rgb(var(--color-border))] flex justify-between items-center bg-gradient-to-br from-[rgb(var(--color-primary))]/5 to-transparent">
+      <div className="p-6 border-b border-[rgb(var(--color-border))] flex justify-between items-start bg-gradient-to-br from-[rgb(var(--color-primary))]/5 to-transparent">
         <div className="flex items-center gap-4">
           <button
             onClick={onCancel}
@@ -1452,48 +1581,22 @@ function TemplateForm({ template, onCancel, onSuccess }) {
               <h4 className="text-sm font-bold text-[rgb(var(--color-text))] border-b border-[rgb(var(--color-border))] pb-2">
                 General Information
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase mb-2">
-                    Template Name *
-                  </label>
-                  <input
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
-                    placeholder="e.g. Quote Approval"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase mb-2">
-                    Category *
-                  </label>
-                  <select
-                    name="category"
-                    value={formData.category}
-                    onChange={handleChange}
-                    className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
-                  >
-                    <option value="operational">Operational</option>
-                    <option value="system">System</option>
-                    <option value="marketing">Marketing</option>
-                    <option value="emergency">Emergency</option>
-                  </select>
-                </div>
-              </div>
               <div>
                 <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase mb-2">
-                  Description
+                  Template Name *
                 </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
+                <input
+                  name="name"
+                  value={formData.name}
                   onChange={handleChange}
-                  rows={3}
-                  className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all resize-none"
-                  placeholder="Brief description of this template"
+                  className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
+                  placeholder="e.g. Quote Approval"
                 />
+                {validationErrors.name && (
+                  <p className="text-red-500 text-[10px] mt-1 font-medium">
+                    {validationErrors.name}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1507,48 +1610,55 @@ function TemplateForm({ template, onCancel, onSuccess }) {
                   <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase mb-2">
                     Type *
                   </label>
-                  <select
+                  <CustomSelect
                     name="type"
                     value={formData.type}
                     onChange={handleChange}
-                    className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
-                  >
-                    <option value="system">System</option>
-                    <option value="alert">Alert</option>
-                    <option value="announcement">Announcement</option>
-                  </select>
+                    options={[
+                      { value: 'announcement', label: '📢 Announcement' },
+                      { value: 'alert', label: '⚠️ Alert' },
+                    ]}
+                    placeholder="Select Type"
+                    error={!!validationErrors.type}
+                  />
+                  {validationErrors.type && (
+                    <p className="text-red-500 text-[10px] mt-1 font-medium">
+                      {validationErrors.type}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase mb-2">
                     Priority
                   </label>
-                  <select
+                  <CustomSelect
                     name="defaultPriority"
                     value={formData.defaultPriority}
                     onChange={handleChange}
-                    className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
+                    options={[
+                      { value: 'low', label: 'Low' },
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'high', label: 'High' },
+                      { value: 'critical', label: 'Critical' },
+                    ]}
+                    placeholder="Select Priority"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase mb-2">
                     Audience
                   </label>
-                  <select
+                  <CustomSelect
                     name="defaultTargetAudience"
                     value={formData.defaultTargetAudience}
                     onChange={handleChange}
-                    className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
-                  >
-                    <option value="all">All Users</option>
-                    <option value="admins">Admins</option>
-                    <option value="dealers">Dealers</option>
-                    <option value="managers">Managers</option>
-                  </select>
+                    options={[
+                      { value: 'all', label: '🌐 All Users' },
+                      { value: 'dealer_manager', label: 'Dealer Managers' },
+                      { value: 'seller', label: 'Sellers' },
+                    ]}
+                    placeholder="Select Audience"
+                  />
                 </div>
               </div>
             </div>
@@ -1567,7 +1677,7 @@ function TemplateForm({ template, onCancel, onSuccess }) {
                   value={formData.titleTemplate}
                   onChange={handleChange}
                   className="w-full font-mono text-sm bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-2.5 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all"
-                  placeholder="Quote {{quoteId}} Status Update"
+                  placeholder="Quote Status Update"
                 />
               </div>
 
@@ -1581,100 +1691,8 @@ function TemplateForm({ template, onCancel, onSuccess }) {
                   onChange={handleChange}
                   rows={5}
                   className="w-full font-mono text-sm bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-3 py-3 text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] transition-all resize-none"
-                  placeholder="Hello {{customerName}}, your quote #{{quoteId}} has been..."
+                  placeholder="Hello , your quote has been..."
                 />
-
-                {/* Variable Helper Section */}
-                <div className="mt-4 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h5 className="text-xs font-bold text-[rgb(var(--color-text))] uppercase flex items-center gap-2">
-                      <span>Dynamic Variables</span>
-                      {(() => {
-                        const getVars = (str) => {
-                          const vars = new Set();
-                          const regex = /{{([^}]+)}}/g;
-                          let match;
-                          while ((match = regex.exec(str)) !== null) {
-                            vars.add(match[1].trim());
-                          }
-                          return vars;
-                        };
-                        const titleVars = getVars(formData.titleTemplate);
-                        const msgVars = getVars(formData.messageTemplate);
-                        const count = new Set([...titleVars, ...msgVars]).size;
-                        return count > 0 ? (
-                          <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full text-[10px]">
-                            {count} detected
-                          </span>
-                        ) : null;
-                      })()}
-                    </h5>
-                  </div>
-
-                  {/* Quick Insert Actions */}
-                  <div>
-                    <p className="text-[10px] text-[rgb(var(--color-text-muted))] mb-2">
-                      Click to insert common variables:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {['customerName', 'quoteId', 'status', 'date', 'amount'].map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => {
-                            const newVal = formData.messageTemplate + ` {{${v}}}`;
-                            handleChange({ target: { name: 'messageTemplate', value: newVal } });
-                          }}
-                          className="px-2 py-1 bg-[rgb(var(--color-background))] hover:bg-[rgb(var(--color-primary))]/10 border border-[rgb(var(--color-border))] hover:border-[rgb(var(--color-primary))] rounded text-xs font-mono text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] transition-all flex items-center gap-1 group"
-                        >
-                          <Plus size={10} className="opacity-50 group-hover:opacity-100" />
-                          {`{{${v}}}`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="pt-2 border-t border-[rgb(var(--color-border))] border-dashed">
-                    {(() => {
-                      const getVars = (str) => {
-                        const vars = new Set();
-                        const regex = /{{([^}]+)}}/g;
-                        let match;
-                        while ((match = regex.exec(str)) !== null) {
-                          vars.add(match[1].trim());
-                        }
-                        return vars;
-                      };
-                      const vars = [
-                        ...new Set([
-                          ...getVars(formData.titleTemplate),
-                          ...getVars(formData.messageTemplate),
-                        ]),
-                      ];
-
-                      if (vars.length > 0) {
-                        return (
-                          <div className="flex flex-wrap gap-2">
-                            {vars.map((v) => (
-                              <span
-                                key={v}
-                                className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-mono border border-blue-100 flex items-center gap-1"
-                              >
-                                <span className="font-bold">{v}</span>
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      }
-                      return (
-                        <p className="text-[10px] text-[rgb(var(--color-text-muted))] italic">
-                          No variables used yet. Type{' '}
-                          <code className="text-blue-600">{`{{variable}}`}</code> in the title or
-                          message above.
-                        </p>
-                      );
-                    })()}
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -1691,9 +1709,9 @@ function TemplateForm({ template, onCancel, onSuccess }) {
           Cancel
         </button>
         <button
-          type="submit"
-          form="templateForm"
-          disabled={saving}
+          type="button"
+          onClick={handleSubmit}
+          disabled={saving || !isDirty}
           className="flex items-center gap-2 px-6 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-lg hover:bg-blue-700 font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[rgb(var(--color-primary))]/20"
         >
           {saving ? (

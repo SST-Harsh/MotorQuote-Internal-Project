@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import CustomDateTimePicker from '@/components/common/CustomDateTimePicker';
+import CustomSelect from '@/components/common/CustomSelect';
 import Swal from 'sweetalert2';
 import auditService from '@/services/auditService';
 import DataTable from '@/components/common/DataTable';
@@ -30,56 +32,108 @@ import FilterDrawer from '@/components/common/FilterDrawer';
 import PageHeader from '@/components/common/PageHeader';
 import { usePreference } from '@/context/PreferenceContext';
 import { formatDate, formatTime } from '@/utils/i18n';
+import { canExportReports, canCleanupLogs, canViewAuditLogs } from '@/utils/roleUtils';
 
 const getMethodColor = (method) => {
   switch (method?.toUpperCase()) {
     case 'GET':
-      return 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800';
+      return 'text-blue-700 bg-blue-100 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700';
     case 'POST':
-      return 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800';
+      return 'text-emerald-700 bg-emerald-100 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700';
     case 'PUT':
-      return 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800';
+      return 'text-amber-700 bg-amber-100 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700';
     case 'DELETE':
-      return 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800';
+      return 'text-rose-700 bg-rose-100 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700';
     default:
-      return 'text-[rgb(var(--color-text-muted))] bg-[rgb(var(--color-surface))] border-[rgb(var(--color-border))]';
+      return 'text-slate-600 bg-slate-100 border-slate-200 dark:text-slate-400 dark:bg-slate-900/40 dark:border-slate-700';
   }
-};
-
-const getSeverityBadge = (level) => {
-  const styles = {
-    critical:
-      'bg-rose-100 text-rose-700 border-rose-200 ring-rose-500/10 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800',
-    error:
-      'bg-orange-100 text-orange-700 border-orange-200 ring-orange-500/10 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800',
-    warning:
-      'bg-amber-100 text-amber-700 border-amber-200 ring-amber-500/10 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-    info: 'bg-[rgb(var(--color-primary))/0.1] text-[rgb(var(--color-primary))] border-[rgb(var(--color-primary))/0.2] ring-[rgb(var(--color-primary))/0.1]',
-  };
-  return styles[level?.toLowerCase()] || styles.info;
 };
 
 export default function SuperAdminAuditLogs() {
   const { preferences } = usePreference();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('audit');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
+  const pathname = usePathname();
+  const isRefresh = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined' && isRefresh) {
+      return sessionStorage.getItem('super_admin_audit_logs_tab') || 'audit';
+    }
+    return 'audit';
+  });
+
+  const canExport = canExportReports(user);
+  const canCleanup = canCleanupLogs(user);
+  const canViewAudit = canViewAuditLogs(user);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
   const [viewingLog, setViewingLog] = useState(null);
   const [activityUser, setActivityUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentData, setCurrentData] = useState([]);
   const [stats, setStats] = useState(null);
   const [errorStats, setErrorStats] = useState(null);
+
+  const defaultDates = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 1);
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0],
+    };
+  }, []);
+
   const [history, setHistory] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 100, total_pages: 1 });
-  const [filters, setFilters] = useState({
-    startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
-    action: '',
-    resource: '',
-    severity: '',
-    status: '',
-    searchTerm: '',
+  const [pagination, setPagination] = useState(() => {
+    const defaultPagination = { page: 1, limit: 200, total_pages: 1 };
+    if (typeof window !== 'undefined' && isRefresh) {
+      const saved = sessionStorage.getItem('super_admin_audit_logs_pagination');
+      return saved ? JSON.parse(saved) : defaultPagination;
+    }
+    return defaultPagination;
   });
+
+  const AUDIT_LOGS_FILTERS_KEY = 'super_admin_audit_logs_filters';
+
+  const [filters, setFilters] = useState(() => {
+    const defaultFilters = {
+      startDate: '',
+      endDate: '',
+      action: '',
+      resource: '',
+      severity: '',
+      status: '',
+      searchTerm: '',
+    };
+    try {
+      if (typeof window !== 'undefined' && isRefresh) {
+        const saved = sessionStorage.getItem(AUDIT_LOGS_FILTERS_KEY);
+        return saved ? JSON.parse(saved) : defaultFilters;
+      }
+      return defaultFilters;
+    } catch (_) {
+      return defaultFilters;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem('super_admin_audit_logs_tab', activeTab);
+    sessionStorage.setItem('super_admin_audit_logs_pagination', JSON.stringify(pagination));
+    sessionStorage.setItem(AUDIT_LOGS_FILTERS_KEY, JSON.stringify(filters));
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [activeTab, pagination, filters, pathname]);
+
+  const updateFilters = (newFilters) => {
+    setFilters(newFilters);
+  };
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
 
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
@@ -94,11 +148,14 @@ export default function SuperAdminAuditLogs() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      const effectiveStartDate = filters.startDate || defaultDates.start;
+      const effectiveEndDate = filters.endDate || defaultDates.end;
+
       const commonParams = {
         page: pagination.page,
         limit: pagination.limit,
-        startDate: filters.startDate,
-        endDate: filters.endDate + 'T23:59:59', // Include end of day
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate + 'T23:59:59',
       };
 
       let res = { data: [], pagination: { total_pages: 1, total: 0 } };
@@ -154,13 +211,16 @@ export default function SuperAdminAuditLogs() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTab, pagination.page, pagination.limit, filters]);
+  }, [activeTab, pagination.page, pagination.limit, filters, defaultDates]);
 
   const fetchStats = useCallback(async () => {
     try {
+      const effectiveStartDate = filters.startDate || defaultDates.start;
+      const effectiveEndDate = filters.endDate || defaultDates.end;
+
       const dateParams = {
-        startDate: filters.startDate,
-        endDate: filters.endDate + 'T23:59:59', // Include end of day
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate + 'T23:59:59',
       };
       const [auditRes, errorRes] = await Promise.all([
         auditService.getAuditStats(dateParams),
@@ -168,7 +228,15 @@ export default function SuperAdminAuditLogs() {
       ]);
 
       const aggregateStats = (res) => {
-        if (!Array.isArray(res)) return res;
+        const empty = {
+          total_actions: 0,
+          successful_actions: 0,
+          failed_actions: 0,
+          unique_users: 0,
+          total_errors: 0,
+        };
+        if (!Array.isArray(res)) return { overview: { ...empty, ...(res?.overview || res) } };
+        if (res.length === 0) return { overview: empty };
         return {
           overview: res.reduce(
             (acc, curr) => ({
@@ -180,25 +248,33 @@ export default function SuperAdminAuditLogs() {
               unique_users: Math.max(Number(acc.unique_users) || 0, Number(curr.unique_users) || 0),
               total_errors: (Number(acc.total_errors) || 0) + (Number(curr.total_errors) || 0),
             }),
-            {}
+            empty
           ),
         };
       };
 
-      const procAuditStats = Array.isArray(auditRes) ? aggregateStats(auditRes) : auditRes;
-      const procErrorStats = Array.isArray(errorRes) ? aggregateStats(errorRes) : errorRes;
+      const procAuditStats = aggregateStats(auditRes);
+      const procErrorStats = aggregateStats(errorRes);
 
       setStats(procAuditStats);
       setErrorStats(procErrorStats);
     } catch (e) {
       console.error('Stats error', e);
     }
-  }, [filters.startDate, filters.endDate]);
+  }, [filters.startDate, filters.endDate, defaultDates]);
 
   useEffect(() => {
     fetchData();
     fetchStats();
   }, [fetchData, fetchStats]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!isExportOpen) return;
+    const handleClickOutside = () => setIsExportOpen(false);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [isExportOpen]);
 
   useEffect(() => {
     if (viewingLog && viewingLog.resource && viewingLog.resource_id) {
@@ -211,10 +287,25 @@ export default function SuperAdminAuditLogs() {
     }
   }, [viewingLog]);
 
-  // Unified handleSearch logic is now internal to DataTable for client-side experience
+  const resetFilters = useCallback(() => {
+    const resetObj = {
+      startDate: '',
+      endDate: '',
+      action: '',
+      resource: '',
+      severity: '',
+      status: '',
+      searchTerm: '',
+    };
+    updateFilters(resetObj);
+    setTempFilters(resetObj);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  }, []);
 
-  const handleFilterChange = (key, val) => {
-    setFilters((prev) => ({ ...prev, [key]: val }));
+  const handleRemoveFilter = (key) => {
+    const next = { ...filters };
+    next[key] = '';
+    updateFilters(next);
     setPagination((prev) => ({ ...prev, page: 1 }));
   };
 
@@ -317,12 +408,16 @@ export default function SuperAdminAuditLogs() {
         ...commonCols,
         {
           header: 'User',
-          type: 'avatar',
-          config: (row) => ({
-            name: row.user_email || 'System',
-            subtext: row.ip_address,
-            image: row.profile_picture,
-          }),
+          sortable: true,
+          sortKey: 'user_email',
+          accessor: (row) => (
+            <div>
+              <div className="font-medium text-[rgb(var(--color-text))]">
+                {row.user_email || 'System'}
+              </div>
+              <div className="text-xs text-[rgb(var(--color-text-muted))]">{row.ip_address}</div>
+            </div>
+          ),
         },
         {
           header: 'Action',
@@ -332,10 +427,11 @@ export default function SuperAdminAuditLogs() {
         {
           header: 'Status',
           type: 'badge',
+          sortable: true,
           accessor: 'status',
           config: {
-            green: ['success'],
-            red: ['failed', 'error'],
+            green: ['success', 'SUCCESS'],
+            red: ['failed', 'error', 'FAILURE', 'FAILED', 'FAIL'],
           },
         },
         {
@@ -356,24 +452,28 @@ export default function SuperAdminAuditLogs() {
         ...commonCols,
         {
           header: 'Method',
+          sortable: true,
+          accessor: 'method',
+          className: 'font-semibold text-[rgb(var(--color-text))] uppercase',
+        },
+        {
+          header: 'Error Details',
           accessor: (row) => (
             <div>
-              <span
-                className={`text-[10px] font-bold px-1.5 rounded border ${getMethodColor(row.method)}`}
+              <div className="font-semibold text-[rgb(var(--color-text))]">{row.error_type}</div>
+              <div
+                title={row.error_message}
+                className="max-w-[200px] truncate text-[rgb(var(--color-text-muted))] text-xs font-normal opacity-80 mt-0.5"
               >
-                {row.method}
-              </span>
+                {row.error_message}
+              </div>
             </div>
           ),
         },
         {
-          header: 'Error Type',
-          accessor: 'error_type',
-          className: 'font-semibold text-rose-600',
-        },
-        {
           header: 'Severity',
           type: 'badge',
+          sortable: true,
           accessor: 'severity',
           config: {
             red: ['critical', 'error'],
@@ -453,9 +553,6 @@ export default function SuperAdminAuditLogs() {
                 User / Actor
               </label>
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[rgb(var(--color-primary))/0.1] text-[rgb(var(--color-primary))] flex items-center justify-center text-xs font-bold border border-[rgb(var(--color-primary))/0.2]">
-                  {(log.user_email?.[0] || 'S').toUpperCase()}
-                </div>
                 <div className="overflow-hidden">
                   <div className="text-sm font-bold text-[rgb(var(--color-text))] truncate">
                     {log.user_email || 'System'}
@@ -545,7 +642,7 @@ export default function SuperAdminAuditLogs() {
     if (activityUser?.id) {
       const load = async () => {
         try {
-          const res = await auditService.getUserActivity(activityUser.id, { days: 30 });
+          const res = await auditService.getUserActivity(activityUser.id);
           setActivityData(Array.isArray(res) ? res : res.data || []);
         } catch (e) {
           console.error(e);
@@ -592,47 +689,75 @@ export default function SuperAdminAuditLogs() {
     ) : null;
 
   return (
-    <div className="flex flex-col h-auto min-h-screen  bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] font-sans transition-colors duration-200">
+    <div className="flex flex-col bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] font-sans transition-colors duration-200">
       <div className="px-4 md:px-8 py-6 md:py-8 pb-4">
         <PageHeader
           title="System Audit & Compliance"
           subtitle={
-            <>
-              Tracking activity from{' '}
-              <span className="font-semibold text-[rgb(var(--color-text))]">
-                {formatDate(filters.startDate)}
-              </span>{' '}
-              to{' '}
-              <span className="font-semibold text-[rgb(var(--color-text))]">
-                {formatDate(filters.endDate)}
+            <div className="flex flex-wrap items-center gap-1.5 bg-[rgb(var(--color-primary))]/5 border border-[rgb(var(--color-primary))]/10 px-3 py-1.5 rounded-lg w-fit">
+              <span className="text-xs font-medium text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
+                {filters.startDate || filters.endDate ? 'Tracking Activity' : 'Default Period'}
               </span>
-            </>
+              <div className="h-3 w-px bg-[rgb(var(--color-border))] mx-1" />
+              <span className="text-xs text-[rgb(var(--color-text-muted))]">from</span>
+              <span className="text-sm font-bold text-[rgb(var(--color-text))]">
+                {formatDate(filters.startDate || defaultDates.start)}
+              </span>
+              <span className="text-xs text-[rgb(var(--color-text-muted))]">to</span>
+              <span className="text-sm font-bold text-[rgb(var(--color-text))]">
+                {formatDate(filters.endDate || defaultDates.end)}
+              </span>
+            </div>
           }
           actions={
-            <div className="relative group">
-              <button className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-md">
+            <div className="relative">
+              <button
+                disabled={!canExport}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExportOpen(!isExportOpen);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-md ${
+                  canExport
+                    ? 'bg-[rgb(var(--color-primary))] text-white hover:bg-[rgb(var(--color-primary-dark))]'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  canExport ? 'Export Options' : "You don't have permission to export reports."
+                }
+              >
                 <Download size={16} />
                 <span className="font-bold text-sm hidden sm:inline">Export</span>
-                <ChevronDown size={14} />
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isExportOpen ? 'rotate-180' : ''}`}
+                />
               </button>
-              <div className="absolute right-0 top-full mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl overflow-hidden invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all z-20">
-                <div className="p-2 border-b border-[rgb(var(--color-border))] text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase">
-                  Audit Data
-                </div>
-                <button
-                  onClick={handleExport}
-                  className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+              {canExport && (
+                <div
+                  className={`absolute right-0 top-full mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl overflow-hidden transition-all z-50 ${isExportOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}
                 >
-                  <FileText size={14} className="text-blue-500" /> Export as CSV
-                </button>
-              </div>
+                  <div className="p-2 border-b border-[rgb(var(--color-border))] text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase">
+                    Audit Data
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleExport();
+                      setIsExportOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+                  >
+                    <FileText size={14} className="text-blue-500" /> Export as CSV
+                  </button>
+                </div>
+              )}
             </div>
           }
           stats={[
             <StatCard
               key="total-actions"
               title="Total Actions"
-              value={stats?.overview?.total_actions?.toLocaleString() || 0}
+              value={Number(stats?.overview?.total_actions || 0).toLocaleString()}
               helperText="In selected period"
               icon={<Activity size={20} />}
               accent="#3b82f6"
@@ -640,7 +765,7 @@ export default function SuperAdminAuditLogs() {
             <StatCard
               key="success-rate"
               title="Success Rate"
-              value={`${((stats?.overview?.successful_actions / (stats?.overview?.total_actions || 1)) * 100).toFixed(1)}%`}
+              value={`${(((Number(stats?.overview?.successful_actions) || 0) / (Number(stats?.overview?.total_actions) || 1)) * 100).toFixed(1)}%`}
               helperText={`${stats?.overview?.failed_actions || 0} failed actions`}
               icon={<CheckCircle size={20} />}
               accent="#10b981"
@@ -648,7 +773,7 @@ export default function SuperAdminAuditLogs() {
             <StatCard
               key="critical-errors"
               title="Critical Errors"
-              value={errorStats?.overview?.total_errors || 0}
+              value={Number(errorStats?.overview?.total_errors || 0)}
               helperText="Require attention"
               icon={<AlertTriangle size={20} />}
               accent="#f43f5e"
@@ -656,7 +781,7 @@ export default function SuperAdminAuditLogs() {
             <StatCard
               key="active-users"
               title="Active Users"
-              value={stats?.overview?.unique_users || 0}
+              value={Number(stats?.overview?.unique_users || 0)}
               helperText="Distinct identities"
               icon={<User size={20} />}
               accent="#a855f7"
@@ -691,38 +816,72 @@ export default function SuperAdminAuditLogs() {
             <DataTable
               data={currentData}
               columns={columns}
+              persistenceKey={`audit-logs-${activeTab}`}
               itemsPerPage={preferences.items_per_page || 10}
               searchable={true}
               searchKeys={['action', 'resource', 'user_email', 'error_type', 'error_message']}
+              searchPlaceholder={`Search ${activeTab} logs...`}
+              highlightId={highlightId}
               className="min-h-full"
               onFilterClick={() => setIsFilterDrawerOpen(true)}
-              onClearFilters={() => {
-                const resetFilters = {
-                  startDate: new Date(new Date().setDate(new Date().getDate() - 30))
-                    .toISOString()
-                    .split('T')[0],
-                  endDate: new Date().toISOString().split('T')[0],
-                  action: '',
-                  resource: '',
-                  severity: '',
-                  status: '',
-                  searchTerm: '',
-                };
-                setFilters(resetFilters);
-                setTempFilters(resetFilters);
-                setPagination((prev) => ({ ...prev, page: 1 }));
+              onClearFilters={() => resetFilters()}
+              onRemoveExternalFilter={handleRemoveFilter}
+              hideFilterDropdowns={true}
+              externalFilters={{
+                startDate: filters.startDate,
+                endDate: filters.endDate,
+                action: filters.action,
+                resource: filters.resource,
+                severity: filters.severity,
+                status: filters.status,
               }}
+              filterOptions={[
+                {
+                  key: 'action',
+                  label: 'Action',
+                  options: [
+                    { value: 'CREATE', label: 'Create' },
+                    { value: 'UPDATE', label: 'Update' },
+                    { value: 'DELETE', label: 'Delete' },
+                    { value: 'LOGIN', label: 'Login' },
+                  ],
+                },
+                {
+                  key: 'resource',
+                  label: 'Resource',
+                  options: [
+                    { value: 'User', label: 'User' },
+                    { value: 'Quote', label: 'Quote' },
+                    { value: 'Dealership', label: 'Dealership' },
+                    { value: 'Auth', label: 'Auth' },
+                  ],
+                },
+                {
+                  key: 'severity',
+                  label: 'Severity',
+                  options: [
+                    { value: 'critical', label: 'Critical' },
+                    { value: 'error', label: 'Error' },
+                    { value: 'warning', label: 'Warning' },
+                  ],
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  options: [
+                    { value: 'success', label: 'Success' },
+                    { value: 'failed', label: 'Failed' },
+                  ],
+                },
+              ]}
               showClearFilter={
                 filters.action !== '' ||
                 filters.resource !== '' ||
                 filters.severity !== '' ||
                 filters.status !== '' ||
                 filters.searchTerm !== '' ||
-                filters.startDate !==
-                  new Date(new Date().setDate(new Date().getDate() - 30))
-                    .toISOString()
-                    .split('T')[0] ||
-                filters.endDate !== new Date().toISOString().split('T')[0]
+                filters.startDate !== '' ||
+                filters.endDate !== ''
               }
             />
           )}
@@ -740,28 +899,27 @@ export default function SuperAdminAuditLogs() {
           name: viewingLog ? viewingLog.error_type || viewingLog.action : '',
           status: viewingLog?.status || (viewingLog?.error_type ? 'Error' : 'Success'),
           id: viewingLog?.id,
-          joinedDate: viewingLog?.created_at,
         }}
         sections={getDetailSections(viewingLog, history, activityUser, activityContent)}
         maxWidth="max-w-2xl"
         mode="drawer"
         showActivityTab={false}
+        showAvatar={false}
+        showJoinedDate={false}
       />
 
       <FilterDrawer
         isOpen={isFilterDrawerOpen}
         onClose={() => setIsFilterDrawerOpen(false)}
         onApply={() => {
-          setFilters(tempFilters);
+          updateFilters(tempFilters);
           setIsFilterDrawerOpen(false);
         }}
         onReset={() => {
           const resetFilters = {
             ...filters,
-            startDate: new Date(new Date().setDate(new Date().getDate() - 30))
-              .toISOString()
-              .split('T')[0],
-            endDate: new Date().toISOString().split('T')[0],
+            startDate: '',
+            endDate: '',
             action: '',
             resource: '',
             severity: '',
@@ -799,35 +957,55 @@ export default function SuperAdminAuditLogs() {
                 <label className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
                   Action Type
                 </label>
-                <select
-                  className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg text-sm text-[rgb(var(--color-text))] focus:outline-none focus:border-[rgb(var(--color-primary))]"
+                <CustomSelect
+                  options={[
+                    { value: '', label: 'All Actions' },
+                    { value: 'CREATE', label: 'Create' },
+                    { value: 'UPDATE', label: 'Update' },
+                    { value: 'DELETE', label: 'Delete' },
+                    { value: 'LOGIN', label: 'Login' },
+                  ]}
                   onChange={(e) => setTempFilters((prev) => ({ ...prev, action: e.target.value }))}
                   value={tempFilters.action}
-                >
-                  <option value="">All Actions</option>
-                  <option value="CREATE">Create</option>
-                  <option value="UPDATE">Update</option>
-                  <option value="DELETE">Delete</option>
-                  <option value="LOGIN">Login</option>
-                </select>
+                  placeholder="All Actions"
+                  className="w-full"
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
                   Resource
                 </label>
-                <select
-                  className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg text-sm text-[rgb(var(--color-text))] focus:outline-none focus:border-[rgb(var(--color-primary))]"
+                <CustomSelect
+                  options={[
+                    { value: '', label: 'All Resources' },
+                    { value: 'User', label: 'User' },
+                    { value: 'Quote', label: 'Quote' },
+                    { value: 'Dealership', label: 'Dealership' },
+                    { value: 'Auth', label: 'Auth' },
+                  ]}
                   onChange={(e) =>
                     setTempFilters((prev) => ({ ...prev, resource: e.target.value }))
                   }
                   value={tempFilters.resource}
-                >
-                  <option value="">All Resources</option>
-                  <option value="User">User</option>
-                  <option value="Quote">Quote</option>
-                  <option value="Dealership">Dealership</option>
-                  <option value="Auth">Auth</option>
-                </select>
+                  placeholder="All Resources"
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
+                  Status
+                </label>
+                <CustomSelect
+                  options={[
+                    { value: '', label: 'Status' },
+                    { value: 'success', label: 'Success' },
+                    { value: 'failed', label: 'Failed' },
+                  ]}
+                  onChange={(e) => setTempFilters((prev) => ({ ...prev, status: e.target.value }))}
+                  value={tempFilters.status}
+                  placeholder="Status"
+                  className="w-full"
+                />
               </div>
             </>
           )}
@@ -837,16 +1015,18 @@ export default function SuperAdminAuditLogs() {
               <label className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
                 Severity Level
               </label>
-              <select
-                className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg text-sm text-[rgb(var(--color-text))] focus:outline-none focus:border-[rgb(var(--color-primary))]"
+              <CustomSelect
+                options={[
+                  { value: '', label: 'All Severities' },
+                  { value: 'critical', label: 'Critical' },
+                  { value: 'error', label: 'Error' },
+                  { value: 'warning', label: 'Warning' },
+                ]}
                 onChange={(e) => setTempFilters((prev) => ({ ...prev, severity: e.target.value }))}
                 value={tempFilters.severity}
-              >
-                <option value="">All Severities</option>
-                <option value="critical">Critical</option>
-                <option value="error">Error</option>
-                <option value="warning">Warning</option>
-              </select>
+                placeholder="All Severities"
+                className="w-full"
+              />
             </div>
           )}
 
@@ -857,12 +1037,20 @@ export default function SuperAdminAuditLogs() {
                   setIsFilterDrawerOpen(false);
                   handleCleanup();
                 }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold hover:bg-rose-100 transition-all shadow-sm dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800"
+                disabled={!canCleanup}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all shadow-sm active:transform active:scale-[0.98] ring-offset-2 ${
+                  canCleanup
+                    ? 'bg-rose-500 text-white border border-rose-600 hover:bg-rose-600 focus:ring-2 focus:ring-rose-500'
+                    : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  canCleanup ? 'Cleanup Old Logs' : "You don't have permission to cleanup logs."
+                }
               >
                 <Trash2 size={18} /> Cleanup Old Logs
               </button>
-              <p className="mt-2 text-[10px] text-center text-[rgb(var(--color-text-muted))]">
-                Permanently delete logs older than 90 days
+              <p className="mt-2 text-[10px] text-center text-[rgb(var(--color-text-muted))] opacity-75">
+                Permanently delete logs older than 90 days (audit) / 30 days (error)
               </p>
             </div>
           )}

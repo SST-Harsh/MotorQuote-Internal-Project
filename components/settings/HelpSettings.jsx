@@ -1,8 +1,11 @@
 'use client';
 import React from 'react';
 import { HelpCircle, Mail, Phone, Book, FileText, ExternalLink } from 'lucide-react';
+import { useConfig } from '@/context/ConfigContext';
 
 export default function HelpSettings() {
+  const { config } = useConfig();
+  const { branding } = config;
   return (
     <div className="bg-[rgb(var(--color-surface))] rounded-xl shadow-sm border border-[rgb(var(--color-border))] p-8 animate-fade-in">
       <h2 className="text-lg font-bold text-[rgb(var(--color-text))] mb-6 flex items-center gap-2">
@@ -61,9 +64,7 @@ export default function HelpSettings() {
                   size={18}
                   className="text-[rgb(var(--color-text-muted))] group-hover:text-[rgb(var(--color-primary))]"
                 />
-                <span className="text-sm text-[rgb(var(--color-text))]">
-                  User Guide & Documentation
-                </span>
+                <span className="text-sm text-[rgb(var(--color-text))]">Terms & Conditions</span>
               </div>
               <ExternalLink size={14} className="text-[rgb(var(--color-text-muted))]" />
             </a>
@@ -91,9 +92,7 @@ export default function HelpSettings() {
                   size={18}
                   className="text-[rgb(var(--color-text-muted))] group-hover:text-[rgb(var(--color-primary))]"
                 />
-                <span className="text-sm text-[rgb(var(--color-text))]">
-                  Privacy Policy & Terms
-                </span>
+                <span className="text-sm text-[rgb(var(--color-text))]">Privacy Policy</span>
               </div>
               <ExternalLink size={14} className="text-[rgb(var(--color-text-muted))]" />
             </a>
@@ -103,7 +102,8 @@ export default function HelpSettings() {
 
       <div className="mt-8 pt-6 border-t border-[rgb(var(--color-border))] text-center">
         <p className="text-xs text-[rgb(var(--color-text-muted))]">
-          MotorQuote v2.4.0 &copy; 2026 Moh Enterprises. All rights reserved.
+          {branding.appName} v2.4.0 &copy; {new Date().getFullYear()} Moh Enterprises. All rights
+          reserved.
         </p>
       </div>
     </div>

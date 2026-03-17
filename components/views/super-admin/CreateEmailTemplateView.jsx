@@ -1,23 +1,18 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, X, Eye, Send as SendIcon, Info, Lock, Search, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Swal from 'sweetalert2';
 import * as yup from 'yup';
 import cmsService from '../../../services/cmsService';
 import { useAuth } from '../../../context/AuthContext';
-import { useTranslation } from '@/context/LanguageContext';
 import PageHeader from '@/components/common/PageHeader';
+import CustomSelect from '@/components/common/CustomSelect';
+import { useConfig } from '@/context/ConfigContext';
+import { useRef } from 'react';
 
-const SYSTEM_FOOTER = `
-<br/>
-<hr style="border: 0; border-top: 1px solid rgb(var(--color-border));"/>
-<p style="font-size: 10px; color: rgb(var(--color-text-muted)); font-family: sans-serif;">
-    This is a system-generated email from MotorQuote.<br/>
-    Please do not reply.
-</p>
-`;
+// StatusBadge component remains same
 
 const StatusBadge = ({ status }) => {
   const styles = {
@@ -61,16 +56,33 @@ const emailTemplateValidationSchema = yup.object({
 });
 
 export default function CreateEmailTemplateView() {
-  const { t: tCommon } = useTranslation('common');
+  const { config } = useConfig();
+  const { branding } = config;
+
+  const SYSTEM_FOOTER = `
+    <br/>
+    <hr style="border: 0; border-top: 1px solid rgb(var(--color-border));"/>
+    <p style="font-size: 10px; color: rgb(var(--color-text-muted)); font-family: sans-serif;">
+        This is a system-generated email from ${branding.appName}.<br/>
+        Please do not reply.
+    </p>
+    `;
+
   const searchParams = useSearchParams();
   const templateId = searchParams.get('id');
   const { user } = useAuth();
-  const textareaRef = useRef(null);
   const router = useRouter();
 
-  const [tagSearch, setTagSearch] = useState('');
-  const [showSchemaBuilder, setShowSchemaBuilder] = useState(false);
   const [errors, setErrors] = useState({});
+  const [generalError, setGeneralError] = useState(null);
+  const textareaRef = useRef(null);
+
+  const commonVariables = [
+    { name: 'userName', description: 'Name of the recipient' },
+    { name: 'appName', description: 'Application name' },
+    { name: 'loginLink', description: 'Link to login page' },
+    { name: 'supportEmail', description: 'Support contact email' },
+  ];
 
   const [templateData, setTemplateData] = useState({
     name: '',
@@ -78,32 +90,31 @@ export default function CreateEmailTemplateView() {
     templateKey: '',
     subject: '',
     category: 'system',
-    bodyHtml: 'Hi {{userName}},\n\nWelcome to MotorQuote.',
-    bodyText: 'Hi {{userName}},\n\nWelcome to MotorQuote.',
+    bodyHtml: `Hi {{userName}},\n\nWelcome to ${branding.appName}.`,
+    bodyText: `Hi {{userName}},\n\nWelcome to ${branding.appName}.`,
+    variables: [],
     isActive: false,
-    variables: [{ name: 'userName', type: 'string', required: true, description: 'User name' }],
   });
 
-  const [isTestEmailModalOpen, setIsTestEmailModalOpen] = useState(false);
-  const [testEmail, setTestEmail] = useState('');
-  const [sendingTest, setSendingTest] = useState(false);
-  const [generalError, setGeneralError] = useState(null);
+  const [initialData, setInitialData] = useState(null);
 
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const isDirty = React.useMemo(() => {
+    if (!templateId) return true;
+    if (!initialData) return false;
+    return JSON.stringify(templateData) !== JSON.stringify(initialData);
+  }, [templateData, initialData, templateId]);
 
   const loadTemplate = React.useCallback(async () => {
     try {
       const data = await cmsService.getEmailTemplateById(templateId);
       if (data) {
-        setTemplateData({
+        const processedData = {
           ...data,
           name: data.name || '',
           description: data.description || '',
           templateKey: data.templateKey || data.template_key || '',
           subject: data.subject || '',
           category: data.category || 'system',
-          // Ensure defaults if missing, handling both camelCase and snake_case
-          variables: data.variables || [],
           // Clean up bodyHtml to remove <html><body> wrapper for better editing experience
           bodyHtml: (data.bodyHtml || data.body_html || data.body || '')
             .replace(/<html><body>/gi, '')
@@ -115,8 +126,11 @@ export default function CreateEmailTemplateView() {
             data.bodyText ||
             data.body_text ||
             (data.bodyHtml || data.body_html || data.body || '').replace(/<[^>]*>/g, ''),
+          variables: data.variables || [],
           isActive: data.isActive ?? data.is_active ?? data.status === 'Active',
-        });
+        };
+        setTemplateData(processedData);
+        setInitialData(JSON.parse(JSON.stringify(processedData)));
       }
     } catch (error) {
       console.error('Failed to load template', error);
@@ -127,99 +141,71 @@ export default function CreateEmailTemplateView() {
   useEffect(() => {
     if (templateId) {
       loadTemplate();
-    } else if (user?.email) {
-      setTestEmail(user.email);
     }
-  }, [templateId, loadTemplate, user]);
+  }, [templateId, loadTemplate]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setTemplateData((prev) => ({ ...prev, [name]: value }));
+    setTemplateData((prev) => {
+      const newData = { ...prev, [name]: value };
+
+      // Auto-generate templateKey from subject for NEW templates
+      // Only if it's currently empty or matches the previous auto-generated value
+      if (name === 'subject' && !templateId) {
+        const prevAutoKey = prev.subject
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '_')
+          .replace(/[^\w]/g, '')
+          .slice(0, 50);
+        if (!prev.templateKey || prev.templateKey === prevAutoKey) {
+          newData.templateKey = value
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, '_')
+            .replace(/[^\w]/g, '')
+            .slice(0, 50);
+          // Also clear templateKey error if it was auto-generated
+          if (errors.templateKey) setErrors((errs) => ({ ...errs, templateKey: null }));
+        }
+      }
+
+      return newData;
+    });
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
-  const handleBodyChange = (e) => {
-    const value = e.target.value;
+  const handleBodyChange = (content) => {
     setTemplateData((prev) => ({
       ...prev,
-      bodyHtml: value,
-      bodyText: value,
+      bodyHtml: content,
+      bodyText: content.replace(/<[^>]*>?/gm, ''),
     }));
     if (errors.bodyHtml) setErrors((prev) => ({ ...prev, bodyHtml: null }));
   };
 
-  const insertToken = (tokenName) => {
-    if (textareaRef.current) {
-      const textarea = textareaRef.current;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = templateData.bodyHtml;
-      const before = text.substring(0, start);
-      const after = text.substring(end, text.length);
+  const insertVariable = (varName) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-      const newToken = `{{${tokenName}}}`;
-      const newText = before + newToken + after;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = templateData.bodyHtml || '';
+    const insertion = `{{${varName}}}`;
 
-      setTemplateData((prev) => ({
-        ...prev,
-        bodyHtml: newText,
-        bodyText: newText,
-      }));
+    const newText = text.substring(0, start) + insertion + text.substring(end);
 
-      // We need to wait for render to set cursor position, doing it in a timeout essentially
-      setTimeout(() => {
-        const newCursorPos = start + newToken.length;
-        textarea.selectionStart = newCursorPos;
-        textarea.selectionEnd = newCursorPos;
-        textarea.focus();
-      }, 0);
-    }
-  };
+    setTemplateData((prev) => ({
+      ...prev,
+      bodyHtml: newText,
+      bodyText: newText.replace(/<[^>]*>?/gm, ''),
+    }));
 
-  const getPreviewHtml = () => {
-    const bodyContent = (templateData.bodyHtml || '').replace(/\n/g, '<br/>');
-
-    let previewHtml = `
-            <div style="font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6; color: rgb(var(--color-text));">
-                ${bodyContent}
-            </div>
-            ${SYSTEM_FOOTER}
-        `;
-
-    templateData.variables.forEach((v) => {
-      previewHtml = previewHtml.replaceAll(
-        `{{${v.name}}}`,
-        `<span style="background-color: rgb(var(--color-primary)/0.1); color: rgb(var(--color-primary)); padding: 2px 4px; border-radius: 4px; font-size: 0.9em;">[${v.description}]</span>`
-      );
-    });
-    return previewHtml;
-  };
-
-  const handlePreview = () => {
-    setShowPreviewModal(true);
-  };
-
-  const handleSendTest = async (e) => {
-    e.preventDefault();
-    if (!testEmail) return;
-
-    setSendingTest(true);
-    try {
-      await cmsService.sendTestEmail(templateId, testEmail);
-      Swal.fire({
-        title: 'Sent!',
-        text: 'Test email has been sent successfully.',
-        icon: 'success',
-        timer: 1500,
-        showConfirmButton: false,
-      });
-      setIsTestEmailModalOpen(false);
-    } catch (error) {
-      console.error(error);
-      Swal.fire({ title: 'Error', text: 'Failed to send test email.', icon: 'error' });
-    } finally {
-      setSendingTest(false);
-    }
+    // Focus and set cursor position after react update (approximate)
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + insertion.length, start + insertion.length);
+    }, 0);
   };
 
   const handleSave = async () => {
@@ -273,45 +259,26 @@ export default function CreateEmailTemplateView() {
     }
   };
 
-  // Variable Management
-  const addVariable = () => {
-    setTemplateData((prev) => ({
-      ...prev,
-      variables: [...prev.variables, { name: '', type: 'string', required: true, description: '' }],
-    }));
-  };
-
-  const updateVariable = (index, field, value) => {
-    const newVars = [...templateData.variables];
-    newVars[index][field] = value;
-    setTemplateData((prev) => ({ ...prev, variables: newVars }));
-  };
-
-  const removeVariable = (index) => {
-    const newVars = templateData.variables.filter((_, i) => i !== index);
-    setTemplateData((prev) => ({ ...prev, variables: newVars }));
-  };
-
-  const filteredTags = templateData.variables.filter(
-    (v) =>
-      (v.name || '').toLowerCase().includes(tagSearch.toLowerCase()) ||
-      v.description?.toLowerCase().includes(tagSearch.toLowerCase())
-  );
-
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] p-3 sm:p-6 space-y-4 sm:space-y-6">
-      <PageHeader
-        title={templateId ? 'Edit Template' : 'Create New Template'}
-        subtitle={
-          templateData.name ||
-          (templateId ? 'Modify existing template' : 'Define a new email communication')
-        }
-        icon={
-          <Link href="/notifications/email">
-            <ArrowLeft size={20} />
-          </Link>
-        }
-      />
+    <div className="min-h-screen text-[rgb(var(--color-text))] p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => router.back()}
+          className="flex w-fit items-center gap-2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors group"
+        >
+          <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+          <span className="font-medium">Back to Templates</span>
+        </button>
+        <div className="mt-2">
+          <PageHeader
+            title={templateId ? 'Edit Template' : 'Create New Template'}
+            subtitle={
+              templateData.name ||
+              (templateId ? 'Modify existing template' : 'Define a new email communication')
+            }
+          />
+        </div>
+      </div>
 
       {generalError && (
         <div className="bg-[rgb(var(--color-error))]/10 border border-[rgb(var(--color-error))]/20 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
@@ -353,7 +320,7 @@ export default function CreateEmailTemplateView() {
               name="subject"
               value={templateData.subject}
               onChange={handleInputChange}
-              placeholder="e.g. Welcome to MotorQuote!"
+              placeholder={`e.g. Welcome to ${branding.appName}!`}
               className={`w-full bg-[rgb(var(--color-background))] border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[rgb(var(--color-primary))] transition-all font-medium ${errors.subject ? 'border-red-500 ring-1 ring-red-50' : 'border-[rgb(var(--color-border))]'}`}
             />
             {errors.subject && (
@@ -368,17 +335,18 @@ export default function CreateEmailTemplateView() {
             <label className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
               Category
             </label>
-            <select
+            <CustomSelect
               name="category"
               value={templateData.category}
-              onChange={handleInputChange}
-              className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[rgb(var(--color-primary))] transition-colors appearance-none"
-            >
-              <option value="Onboarding">Onboarding</option>
-              <option value="Marketing">Marketing</option>
-              <option value="Support">Support</option>
-              <option value="System">System</option>
-            </select>
+              onChange={(e) => handleInputChange(e)} // handleInputChange expects an e.target object
+              options={[
+                { value: 'Onboarding', label: 'Onboarding' },
+                { value: 'Marketing', label: 'Marketing' },
+                { value: 'Support', label: 'Support' },
+                { value: 'System', label: 'System' },
+              ]}
+              className="w-full"
+            />
           </div>
 
           <div className="space-y-2">
@@ -402,37 +370,36 @@ export default function CreateEmailTemplateView() {
             <label className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
               Status
             </label>
-            <select
+            <CustomSelect
               name="isActive"
-              value={templateData.isActive}
+              value={templateData.isActive ? 'true' : 'false'}
               onChange={(e) =>
                 setTemplateData((p) => ({ ...p, isActive: e.target.value === 'true' }))
               }
-              className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[rgb(var(--color-primary))] transition-colors appearance-none"
-            >
-              <option value="true">Active</option>
-              <option value="false">Disabled / Draft</option>
-            </select>
+              options={[
+                { value: 'true', label: 'Active' },
+                { value: 'false', label: 'Disabled / Draft' },
+              ]}
+              className="w-full"
+            />
           </div>
         </div>
 
-        {/* Row 3: Editor & Merge Tags (Split) */}
-        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 min-h-[400px] sm:min-h-[500px]">
-          {/* Left: Editor */}
-          <div className="flex-1 flex flex-col space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
-                Email Body <span className="text-red-500">*</span>
-              </label>
-            </div>
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Editor */}
+          <div className="flex flex-col space-y-2 flex-1 min-h-[400px] sm:min-h-[500px]">
+            <label className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
+              Email Body <span className="text-red-500">*</span>
+            </label>
             <div
               className={`flex-1 bg-[rgb(var(--color-background))] rounded-xl border overflow-hidden flex flex-col relative h-full ${errors.bodyHtml ? 'border-red-500 ring-4 ring-red-50' : 'border-[rgb(var(--color-border))]'}`}
             >
               <textarea
                 ref={textareaRef}
+                name="bodyHtml"
                 value={templateData.bodyHtml || ''}
-                onChange={handleBodyChange}
-                className="w-full h-full p-6 bg-transparent focus:outline-none resize-none font-mono text-sm leading-relaxed text-[rgb(var(--color-text))]"
+                onChange={(e) => handleBodyChange(e.target.value)}
+                className="flex-1 p-4 bg-transparent text-sm font-medium resize-none focus:outline-none min-h-[350px] sm:min-h-[450px]"
                 placeholder="Write your email content here..."
               />
             </div>
@@ -441,197 +408,56 @@ export default function CreateEmailTemplateView() {
             )}
           </div>
 
-          {/* Right: Merge Tags */}
-          <div className="w-full lg:w-80 flex flex-col space-y-2 min-h-[300px] lg:min-h-0">
-            <label className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
-              Dynamic Variables
-            </label>
-            <div className="flex-1 bg-[rgb(var(--color-background))] rounded-xl border border-[rgb(var(--color-border))] p-3 sm:p-4 flex flex-col space-y-4 sm:space-y-6 overflow-hidden">
-              {/* 1. Quick Insert */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-[rgb(var(--color-text-muted))]">
-                  Quick Insert
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {['userName', 'userEmail', 'companyName', 'actionUrl', 'date'].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => insertToken(v)}
-                      className="px-2 py-1.5 bg-[rgb(var(--color-surface))] hover:bg-[rgb(var(--color-primary))]/10 border border-[rgb(var(--color-border))] hover:border-[rgb(var(--color-primary))] rounded text-xs font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] transition-all flex items-center gap-1 group"
-                    >
-                      <span className="opacity-50 group-hover:opacity-100">+</span>
-                      <span className="font-mono">{`{{${v}}}`}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Variables Sidebar */}
+          <div className="w-full md:w-64 space-y-4">
+            <div className="p-4 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-[rgb(var(--color-text-muted))] mb-4 flex items-center gap-2">
+                <Info size={14} className="text-[rgb(var(--color-primary))]" />
+                Variables
+              </h4>
+              <p className="text-[10px] text-[rgb(var(--color-text-muted))] mb-4 italic">
+                Click to insert at cursor position
+              </p>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-[rgb(var(--color-text-muted))]">
-                    Detected
-                  </label>
-                  {(() => {
-                    const getVars = (str) => {
-                      const vars = new Set();
-                      const regex = /{{([^}]+)}}/g;
-                      let match;
-                      while ((match = regex.exec(str)) !== null) {
-                        vars.add(match[1].trim());
-                      }
-                      return vars;
-                    };
-                    const subVars = getVars(templateData.subject || '');
-                    const textVars = getVars(templateData.bodyText || ''); // Scan text version
-                    const htmlVars = getVars(templateData.bodyHtml || '');
-
-                    const count = new Set([...subVars, ...textVars, ...htmlVars]).size;
-                    return count > 0 ? (
-                      <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full text-[10px]">
-                        {count} found
-                      </span>
-                    ) : null;
-                  })()}
-                </div>
-                <div className="bg-[rgb(var(--color-surface))] rounded-lg border border-[rgb(var(--color-border))] p-3 min-h-[100px] max-h-[200px] overflow-y-auto custom-scrollbar">
-                  {(() => {
-                    const getVars = (str) => {
-                      const vars = new Set();
-                      const regex = /{{([^}]+)}}/g;
-                      let match;
-                      while ((match = regex.exec(str)) !== null) {
-                        vars.add(match[1].trim());
-                      }
-                      return vars;
-                    };
-                    const vars = [
-                      ...new Set([
-                        ...getVars(templateData.subject || ''),
-                        ...getVars(templateData.bodyText || ''),
-                        ...getVars(templateData.bodyHtml || ''),
-                      ]),
-                    ];
-
-                    if (vars.length > 0) {
-                      return (
-                        <div className="flex flex-wrap gap-2">
-                          {vars.map((v) => (
-                            <span
-                              key={v}
-                              className="px-2 py-1 bg-[rgb(var(--color-primary))]/10 text-[rgb(var(--color-primary))] rounded text-xs font-mono border border-[rgb(var(--color-primary))]/20 flex items-center gap-1"
-                            >
-                              <span className="font-bold">{v}</span>
-                            </span>
-                          ))}
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className="h-full flex flex-col items-center justify-center text-center p-2 opacity-50">
-                        <p className="text-[10px] italic">
-                          Type <code className="text-blue-600">{`{{variable}}`}</code> in the
-                          content
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* 3. Defined/Schema Variables (Toggle) */}
-              <div className="pt-4 border-t border-[rgb(var(--color-border))] mt-auto">
-                <button
-                  onClick={() => setShowSchemaBuilder(!showSchemaBuilder)}
-                  className="w-full flex items-center justify-between p-2 rounded hover:bg-[rgb(var(--color-surface))] transition-colors group"
-                >
-                  <div className="text-left">
-                    <span className="block text-xs font-bold text-[rgb(var(--color-text))]">
-                      Variable Schema
-                    </span>
-                    <span className="block text-[10px] text-[rgb(var(--color-text-muted))]">
-                      Define types & descriptions
-                    </span>
-                  </div>
-                  <span
-                    className={`text-[rgb(var(--color-text-muted))] transform transition-transform ${showSchemaBuilder ? 'rotate-180' : ''}`}
+              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                {(templateData.variables?.length > 0
+                  ? templateData.variables
+                  : commonVariables
+                ).map((v) => (
+                  <button
+                    key={v.name}
+                    onClick={() => insertVariable(v.name)}
+                    className="w-full text-left p-2 rounded-lg bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] hover:border-[rgb(var(--color-primary))] hover:shadow-sm transition-all group"
                   >
-                    ▼
-                  </span>
-                </button>
+                    <code className="text-[11px] font-bold text-[rgb(var(--color-primary))] group-hover:scale-105 transition-transform inline-block">
+                      {'{{'}
+                      {v.name}
+                      {'}}'}
+                    </code>
+                    <p className="text-[9px] text-[rgb(var(--color-text-muted))] mt-1 line-clamp-1">
+                      {v.description}
+                    </p>
+                  </button>
+                ))}
               </div>
+            </div>
+
+            <div className="p-4 bg-[rgb(var(--color-primary))]/5 border border-[rgb(var(--color-primary))]/10 rounded-xl">
+              <h5 className="text-[10px] font-bold uppercase text-[rgb(var(--color-primary))] mb-2 tracking-wider">
+                Pro Tip
+              </h5>
+              <p className="text-[10px] text-[rgb(var(--color-text-muted))] leading-relaxed">
+                You can also manually type variables using the{' '}
+                <code className="text-[rgb(var(--color-primary))]">{'{{variableName}}'}</code>{' '}
+                syntax.
+              </p>
             </div>
           </div>
         </div>
-
-        {showSchemaBuilder && (
-          <div className="border border-[rgb(var(--color-border))] rounded-xl p-4 bg-[rgb(var(--color-background))]">
-            <div className="flex justify-between items-center mb-4">
-              <label className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
-                Defined Variables
-              </label>
-              <button
-                onClick={addVariable}
-                className="text-xs bg-[rgb(var(--color-primary))] text-white px-2 py-1 rounded hover:bg-[rgb(var(--color-primary-dark))]"
-              >
-                + Add New Definition
-              </button>
-            </div>
-            <div className="space-y-2">
-              {templateData.variables.map((v, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    placeholder="Name (e.g. userName)"
-                    value={v.name}
-                    onChange={(e) => updateVariable(idx, 'name', e.target.value)}
-                    className="flex-1 text-xs border bg-[rgb(var(--color-surface))] rounded px-2 py-1"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Desc"
-                    value={v.description}
-                    onChange={(e) => updateVariable(idx, 'description', e.target.value)}
-                    className="flex-1 text-xs border bg-[rgb(var(--color-surface))]  rounded px-2 py-1"
-                  />
-                  <select
-                    value={v.required}
-                    onChange={(e) => updateVariable(idx, 'required', e.target.value === 'true')}
-                    className="text-xs border bg-[rgb(var(--color-surface))] rounded px-2 py-1"
-                  >
-                    <option value="true">Required</option>
-                    <option value="false">Optional</option>
-                  </select>
-                  <button
-                    onClick={() => removeVariable(idx)}
-                    className="text-red-500 hover:bg-red-50 p-1 rounded"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 sm:gap-4 pt-4">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-2 sm:order-1">
-          <button
-            onClick={handlePreview}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-xl bg-[rgb(var(--color-info))] text-white text-sm sm:text-base font-bold hover:bg-[rgb(var(--color-info-dark))] transition-all shadow-lg shadow-[rgb(var(--color-info))/0.2] hover:-translate-y-1 active:translate-y-0"
-          >
-            Preview Email
-          </button>
-          <button
-            onClick={() => setIsTestEmailModalOpen(true)}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-xl bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] text-[rgb(var(--color-text))] text-sm sm:text-base font-bold hover:bg-[rgb(var(--color-background))] transition-all shadow-sm hover:-translate-y-1 active:translate-y-0"
-          >
-            Send Test Email
-          </button>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 order-1 sm:order-2">
+      <div className="flex justify-end pt-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
           <button
             onClick={() => router.back()}
             className="w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-xl text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-surface))] text-sm sm:text-base font-bold transition-colors border border-transparent hover:border-[rgb(var(--color-border))]"
@@ -640,101 +466,13 @@ export default function CreateEmailTemplateView() {
           </button>
           <button
             onClick={handleSave}
-            className="w-full sm:w-auto px-6 sm:px-8 py-2.5 rounded-xl bg-[rgb(var(--color-primary))] text-white text-sm sm:text-base font-bold hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg shadow-[rgb(var(--color-primary))/0.2] hover:-translate-y-1 active:translate-y-0"
+            disabled={!isDirty}
+            className="w-full sm:w-auto px-6 sm:px-8 py-2.5 rounded-xl bg-[rgb(var(--color-primary))] text-white text-sm sm:text-base font-bold hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg shadow-[rgb(var(--color-primary))/0.2] hover:-translate-y-1 active:translate-y-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           >
-            Create Template
+            {templateId ? 'Update Template' : 'Create Template'}
           </button>
         </div>
       </div>
-
-      {showPreviewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-[rgb(var(--color-border))]">
-              <h2 className="text-lg font-bold">Email Preview</h2>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="p-1 hover:bg-[rgb(var(--color-background))] rounded-full transition-colors font-bold text-[rgb(var(--color-text-muted))]"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto bg-[rgb(var(--color-background))] p-8">
-              <div className="max-w-[600px] mx-auto bg-[rgb(var(--color-surface))] rounded-lg shadow-sm border border-[rgb(var(--color-border))] overflow-hidden">
-                <div className="p-6 md:p-8">
-                  <h1 className="text-xl md:text-2xl font-bold text-[rgb(var(--color-text))] mb-6 border-b border-[rgb(var(--color-border))] pb-4">
-                    {templateData.subject || '(No Subject)'}
-                  </h1>
-                  <div
-                    className="p-2 prose prose-sm max-w-none text-[rgb(var(--color-text))] font-sans leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="p-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] flex justify-end">
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="px-6 py-2 bg-[rgb(var(--color-primary))] text-white text-sm font-bold rounded-xl hover:bg-[rgb(var(--color-primary-dark))] shadow-lg shadow-[rgb(var(--color-primary)/0.2)] transition-all"
-              >
-                Close Preview
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isTestEmailModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[rgb(var(--color-border))]">
-            <div className="p-4 border-b border-[rgb(var(--color-border))] flex justify-between items-center bg-[rgb(var(--color-background))/0.5]">
-              <h3 className="text-lg font-bold text-[rgb(var(--color-text))]">Send Test Email</h3>
-              <button
-                onClick={() => setIsTestEmailModalOpen(false)}
-                className="p-1 hover:bg-[rgb(var(--color-background))] rounded-full transition-colors"
-              >
-                <X size={20} className="text-[rgb(var(--color-text-muted))]" />
-              </button>
-            </div>
-            <form onSubmit={handleSendTest} className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))]">
-                  Recipient Email
-                </label>
-                <input
-                  type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  placeholder="Enter email address..."
-                  className="w-full bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[rgb(var(--color-primary))] transition-all"
-                />
-              </div>
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsTestEmailModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-[rgb(var(--color-border))] font-bold text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={sendingTest}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-[rgb(var(--color-primary))] text-white font-bold hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg shadow-[rgb(var(--color-primary))/0.2] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {sendingTest ? (
-                    'Sending...'
-                  ) : (
-                    <>
-                      <SendIcon size={16} /> Send Test
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

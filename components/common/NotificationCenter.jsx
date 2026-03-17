@@ -3,18 +3,22 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Check, Trash2 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuth } from '@/context/AuthContext';
-import { useTranslation } from '@/context/LanguageContext';
 
 export default function NotificationCenter() {
   const { user } = useAuth();
-  const { t } = useTranslation('common');
   const { unreadCount, userNotifications, markAsRead, markAllAsRead, clearAllNotifications } =
     useNotifications();
 
   const [isOpen, setIsOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Initialize mounted state
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close on click outside
   useEffect(() => {
@@ -68,10 +72,10 @@ export default function NotificationCenter() {
     const past = new Date(date);
     const diffInSeconds = Math.floor((now - past) / 1000);
 
-    if (diffInSeconds < 60) return t('notifications.justNow');
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}${t('time.m')}`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}${t('time.h')}`;
-    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}${t('time.d')}`;
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d`;
     return past.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
@@ -123,7 +127,7 @@ export default function NotificationCenter() {
                 : ''
           }`}
         />
-        {unreadCount > 0 && (
+        {mounted && unreadCount > 0 && (
           <div className="absolute top-2 end-2 flex items-center justify-center">
             <span
               className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${
@@ -159,11 +163,11 @@ export default function NotificationCenter() {
                     size={16}
                     className="text-[rgb(var(--color-primary))] fill-[rgb(var(--color-primary))]/20"
                   />
-                  {t('notifications.title')}
+                  Notifications
                 </h3>
                 {unreadCount > 0 && (
                   <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-600 rounded-full shadow-sm">
-                    {unreadCount} {t('notifications.new')}
+                    {unreadCount} New
                   </span>
                 )}
               </div>
@@ -174,7 +178,7 @@ export default function NotificationCenter() {
                   <button
                     onClick={handleMarkAllRead}
                     disabled={isMarkingRead}
-                    title={t('notifications.markAllRead')}
+                    title="Mark all as read"
                     className="p-1.5 text-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary))]/10 rounded-lg transition-all duration-200 disabled:opacity-50"
                     data-testid="mark-all-read-button"
                   >
@@ -183,7 +187,7 @@ export default function NotificationCenter() {
                   <button
                     onClick={handleClear}
                     disabled={isClearing}
-                    title={t('notifications.clearAll')}
+                    title="Clear all"
                     className="p-1.5 text-[rgb(var(--color-text-muted))] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all duration-200 disabled:opacity-50"
                     data-testid="clear-all-button"
                   >
@@ -201,10 +205,10 @@ export default function NotificationCenter() {
                     <Bell size={28} className="text-[rgb(var(--color-primary))]/50" />
                   </div>
                   <p className="text-sm font-medium text-[rgb(var(--color-text))] mb-1">
-                    {t('notifications.allCaughtUp')}
+                    All caught up!
                   </p>
                   <p className="text-xs text-[rgb(var(--color-text-muted))]">
-                    {t('notifications.noNew')}
+                    No new notifications
                   </p>
                 </div>
               ) : (

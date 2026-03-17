@@ -1,10 +1,13 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Search, ArrowUpDown, X, Filter, ChevronDown, MoreHorizontal } from 'lucide-react';
-import { Pagination } from '@mui/material';
-import { useTranslation } from '@/context/LanguageContext';
+import Input from './Input';
+import CustomSelect from './CustomSelect';
+import { Pagination, TablePagination } from '@mui/material';
 import Image from 'next/image';
 import { usePreference } from '@/context/PreferenceContext';
+import FilterButton from './FilterButton';
+import { usePathname } from 'next/navigation';
 import { formatDate } from '@/utils/i18n';
 
 const DataTable = ({
@@ -21,27 +24,123 @@ const DataTable = ({
   className = '',
   serverSide = false,
   serverTotalPages = 0,
+  serverTotalItems = undefined, // New: support total items explicitly
   serverCurrentPage = 1,
   onServerPageChange,
+  onServerRowsPerPageChange, // New: notify parent of limit changes
   manualFiltering = false,
   onSearchChange,
+  searchValue, // Optional controlled search value (for external reset/sync)
   onRowClick,
   onFilterClick, // New: standard filter button handler
   showFilter = !!onFilterClick, // New: toggle standard filter button
   onClearFilters, // New: clear filter button handler
   showClearFilter = false, // New: toggle clear filter button
+  externalFilters = {}, // New: external filters from parent (for filter drawer integration)
+  onRemoveExternalFilter, // New: remove individual external filter
+  highlightDuration = 2000,
+  hideFilterDropdowns = false, // New: toggle to hide redundant dropdowns when filter drawer is used
+  persistenceKey = null, // Optional key for sessionStorage persistence (route-scoped)
 }) => {
-  const { t } = useTranslation('common');
-  const { preferences } = usePreference();
+  const pathname = usePathname();
+  const { preferences = {} } = usePreference() || {};
   const effectiveItemsPerPage =
-    itemsPerPage !== 5 ? itemsPerPage : preferences.items_per_page || 10;
+    itemsPerPage !== 5 ? itemsPerPage : preferences?.items_per_page || 10;
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({});
+  // Helper to get route-scoped storage key
+  const storageKey = useMemo(
+    () => (persistenceKey ? `dt_state_${persistenceKey}_${pathname}` : null),
+    [persistenceKey, pathname]
+  );
+
+  // Check if we should load persisted state (only on initial load/refresh, not on internal navigation)
+  const isRefresh = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [rowsPerPage, setRowsPerPage] = useState(() => {
+    if (typeof window === 'undefined') return effectiveItemsPerPage;
+    if (storageKey && isRefresh) {
+      try {
+        const saved = sessionStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.rowsPerPage) return parsed.rowsPerPage;
+        }
+      } catch (e) {
+        console.error('Failed to load rowsPerPage from storage', e);
+      }
+    }
+    return effectiveItemsPerPage;
+  });
+
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window === 'undefined') return 1;
+    if (storageKey && isRefresh) {
+      try {
+        const saved = sessionStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.currentPage) return parsed.currentPage;
+        }
+      } catch (e) {
+        console.error('Failed to load currentPage from storage', e);
+      }
+    }
+    return 1;
+  });
+
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (searchValue !== undefined) return searchValue;
+    if (typeof window === 'undefined' || !storageKey || !isRefresh) return '';
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.searchTerm !== undefined) return parsed.searchTerm;
+      }
+    } catch (e) {
+      console.error('Failed to load searchTerm from storage', e);
+    }
+    return '';
+  });
+
+  const [filters, setFilters] = useState(() => {
+    if (typeof window === 'undefined' || !storageKey || !isRefresh) return {};
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.filters) return parsed.filters;
+      }
+    } catch (e) {
+      console.error('Failed to load filters from storage', e);
+    }
+    return {};
+  });
+
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-  const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(externalSelectedIds || []);
   const [activeHighlightId, setActiveHighlightId] = useState(highlightId);
+
+  // Persistence Saving
+  useEffect(() => {
+    if (!storageKey) return;
+    const state = {
+      rowsPerPage,
+      currentPage,
+      // Only persist these if they are not being controlled externally
+      // ...(searchValue === undefined && { searchTerm }),
+      filters,
+    };
+    sessionStorage.setItem(storageKey, JSON.stringify(state));
+  }, [storageKey, rowsPerPage, currentPage, filters]);
+
+  // Update the last path visited to enable refresh-persistence vs navigation-reset
+  useEffect(() => {
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [pathname]);
 
   // Sync with external selection
   useEffect(() => {
@@ -50,11 +149,19 @@ const DataTable = ({
     }
   }, [externalSelectedIds]);
 
+  // Sync internal searchTerm when controlled searchValue changes externally (e.g. clear filters)
+  useEffect(() => {
+    if (searchValue !== undefined && searchValue !== searchTerm) {
+      setSearchTerm(searchValue);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchValue]);
+
   const processedHighlight = useRef(null);
   const tableRef = useRef(null);
 
   const filteredData = useMemo(() => {
-    if (serverSide && manualFiltering) return data;
+    if (manualFiltering) return data;
 
     const safeData = Array.isArray(data) ? data : [];
     return safeData.filter((item) => {
@@ -75,7 +182,7 @@ const DataTable = ({
       }
       return true;
     });
-  }, [data, searchTerm, filters, searchKeys, serverSide, manualFiltering]);
+  }, [data, searchTerm, filters, searchKeys, manualFiltering]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -87,7 +194,14 @@ const DataTable = ({
     return [...filteredData].sort((a, b) => {
       if (!sortConfig.key) return 0;
 
-      const getVal = (obj, path) => path.split('.').reduce((o, i) => o?.[i], obj);
+      const getVal = (obj, path) => {
+        if (!path) return null;
+        if (typeof path === 'function') return path(obj);
+        return path
+          .toString()
+          .split('.')
+          .reduce((o, i) => o?.[i], obj);
+      };
 
       const valA = getVal(a, sortConfig.key);
       const valB = getVal(b, sortConfig.key);
@@ -105,29 +219,36 @@ const DataTable = ({
     });
   }, [filteredData, sortConfig]);
 
-  const totalPages = serverSide
-    ? serverTotalPages
-    : Math.ceil(sortedData.length / effectiveItemsPerPage);
+  const totalPages = serverSide ? serverTotalPages : Math.ceil(sortedData.length / rowsPerPage);
 
   const displayedData = serverSide
     ? sortedData
-    : sortedData.slice(
-        (currentPage - 1) * effectiveItemsPerPage,
-        currentPage * effectiveItemsPerPage
-      );
+    : sortedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+
+  useEffect(() => {
+    if (!serverSide && currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [totalPages, currentPage, serverSide]);
 
   useEffect(() => {
     if (highlightId && sortedData.length > 0) {
       if (processedHighlight.current === highlightId) return;
 
-      const index = sortedData.findIndex((item) => item.id?.toString() === highlightId?.toString());
+      const index = sortedData.findIndex(
+        (item) => item?.id?.toString() === highlightId?.toString()
+      );
       if (index !== -1) {
-        processedHighlight.current = highlightId;
-
         if (!serverSide) {
-          const targetPage = Math.floor(index / effectiveItemsPerPage) + 1;
-          if (currentPage !== targetPage) setCurrentPage(targetPage);
+          const targetPage = Math.floor(index / rowsPerPage) + 1;
+          if (currentPage !== targetPage) {
+            setCurrentPage(targetPage);
+            return; // Wait for re-render on the target page
+          }
         }
+
+        // If we reach here, we are on the correct page
+        processedHighlight.current = highlightId;
         setActiveHighlightId(highlightId);
 
         requestAnimationFrame(() => {
@@ -144,13 +265,14 @@ const DataTable = ({
           if (typeof window !== 'undefined') {
             const url = new URL(window.location);
             url.searchParams.delete('highlight');
+            url.searchParams.delete('highlightId');
             window.history.replaceState({}, '', url);
           }
-        }, 3000);
+        }, highlightDuration);
         return () => clearTimeout(timer);
       }
     }
-  }, [highlightId, sortedData, effectiveItemsPerPage, currentPage, serverSide]);
+  }, [highlightId, sortedData, rowsPerPage, currentPage, serverSide, highlightDuration]);
 
   const handleSelectAll = useCallback(
     (e) => {
@@ -197,6 +319,9 @@ const DataTable = ({
           else if (badgeConfig.orange?.some((v) => bVal === v.toLowerCase()))
             badgeColor =
               'bg-[rgb(var(--color-warning))]/10 text-[rgb(var(--color-warning))] border-[rgb(var(--color-warning))]/20';
+          else if (badgeConfig.yellow?.some((v) => bVal === v.toLowerCase()))
+            badgeColor =
+              'bg-[rgb(var(--color-warning))]/10 text-[rgb(var(--color-warning))] border-[rgb(var(--color-warning))]/20';
           else if (badgeConfig.red?.some((v) => bVal === v.toLowerCase()))
             badgeColor =
               'bg-[rgb(var(--color-error))]/10 text-[rgb(var(--color-error))] border-[rgb(var(--color-error))]/20';
@@ -213,11 +338,16 @@ const DataTable = ({
             badgeColor =
               'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text-muted))] border-[rgb(var(--color-border))]';
 
+          let displayValue = rawValue;
+          if (bVal === 'converted' || bVal === 'sold' || bVal === 'sold_out' || bVal === '') {
+            displayValue = 'Sold Out';
+          }
+
           return (
             <span
               className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide inline-block border ${badgeColor}`}
             >
-              {rawValue}
+              {displayValue}
             </span>
           );
 
@@ -267,7 +397,7 @@ const DataTable = ({
         case 'date':
           return (
             <span className="text-xs text-[rgb(var(--color-text-muted))]">
-              {rawValue ? formatDate(rawValue) : 'N/A'}
+              {rawValue ? new Date(rawValue).toLocaleDateString() : 'N/A'}
             </span>
           );
       }
@@ -280,10 +410,21 @@ const DataTable = ({
   };
 
   const handlePageChange = (event, value) => {
+    const newPage = value + 1;
     if (serverSide) {
-      onServerPageChange?.(value);
+      onServerPageChange?.(newPage);
     } else {
-      setCurrentPage(value);
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    const newRowsPerPage = parseInt(event.target.value, 10);
+    setRowsPerPage(newRowsPerPage);
+    setCurrentPage(1);
+    if (serverSide) {
+      onServerPageChange?.(1); // Reset to page 1 for server-side
+      onServerRowsPerPageChange?.(newRowsPerPage);
     }
   };
 
@@ -293,96 +434,210 @@ const DataTable = ({
     }
   }, [serverSide, serverCurrentPage]);
 
+  useEffect(() => {
+    if (serverSide && itemsPerPage && itemsPerPage !== rowsPerPage) {
+      setRowsPerPage(itemsPerPage);
+    }
+  }, [itemsPerPage, serverSide, rowsPerPage]);
+
   return (
     <div className={`w-full flex flex-col gap-4 ${className}`}>
-      <div className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] overflow-hidden shadow-sm">
+      <div className="rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] overflow-hidden shadow-sm">
         {/* Unified Control Panel Header - Improved Responsiveness */}
-        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 p-4 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))/0.02]">
-          {/* Search Container - takes priority in width */}
-          <div className="relative w-full md:w-auto md:flex-1 group min-w-0">
-            <Search
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] group-focus-within:text-[rgb(var(--color-primary))] transition-colors"
-            />
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSearchTerm(val);
-                if (onSearchChange) onSearchChange(val);
-                if (!serverSide) setCurrentPage(1);
-              }}
-              className="w-full h-11 pl-11 pr-4 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none transition-all placeholder:text-[rgb(var(--color-text-muted))] text-[rgb(var(--color-text))] focus:border-[rgb(var(--color-primary))] focus:ring-4 focus:ring-[rgb(var(--color-primary)/0.1)] shadow-sm hover:border-[rgb(var(--color-border-hover))]"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
-            {showFilter && onFilterClick && (
-              <button
-                onClick={onFilterClick}
-                className="flex items-center gap-2 h-11 px-4 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl text-sm font-semibold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] hover:border-[rgb(var(--color-border-hover))] transition-all shadow-sm shrink-0"
-              >
-                <Filter size={16} className="text-[rgb(var(--color-primary))]" />
-                <span>{t('table.filters') || t('filter') || 'Filters'}</span>
-              </button>
-            )}
-
-            {showClearFilter && onClearFilters && (
-              <button
-                onClick={onClearFilters}
-                className="flex items-center gap-2 h-11 px-4 bg-[rgb(var(--color-error))]/10 border border-[rgb(var(--color-error))]/20 rounded-xl text-sm font-semibold text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/20 hover:border-[rgb(var(--color-error))]/30 transition-all shadow-sm shrink-0"
-              >
-                <X size={16} />
-                <span>{t('table.clearFilters') || 'Clear Filters'}</span>
-              </button>
-            )}
-
-            {extraControls}
-
-            {filterOptions.map((filter) => (
-              <div key={filter.key} className="relative flex-shrink-0">
-                <select
-                  value={filters[filter.key] || 'all'}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, [filter.key]: e.target.value }));
-                    if (!serverSide) setCurrentPage(1);
-                  }}
-                  className="appearance-none h-11 sm:h-12 pl-4 pr-10 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl text-sm sm:text-base font-medium text-[rgb(var(--color-text))] outline-none focus:border-[rgb(var(--color-primary))] focus:ring-4 focus:ring-[rgb(var(--color-primary)/0.05)] cursor-pointer min-w-[140px] sm:min-w-[160px] hover:bg-[rgb(var(--color-background))] hover:border-[rgb(var(--color-border-hover))] transition-all shadow-sm min-h-[44px]"
-                >
-                  <option value="all">{filter.label}</option>
-                  {filter.options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={14}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none"
-                />
-              </div>
-            ))}
-            {(searchTerm || Object.values(filters).some((v) => v !== 'all' && v)) && (
-              <button
-                onClick={() => {
+        <div className="flex flex-col p-4 pb-2 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))/0.02] gap-4">
+          {/* Primary Control Row: Search and Actions */}
+          <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+            {/* Search Container */}
+            <div className="relative w-full md:w-auto md:flex-1 group min-w-0">
+              <Input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchTerm}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchTerm(val);
+                  if (onSearchChange) onSearchChange(val);
+                  if (!serverSide) setCurrentPage(1);
+                }}
+                icon={Search}
+                rightIcon={searchTerm ? X : null}
+                onRightIconClick={() => {
                   setSearchTerm('');
                   setFilters({});
                   onSearchChange?.('');
+                  onClearFilters?.();
                   if (!serverSide) setCurrentPage(1);
                 }}
-                className="flex items-center justify-center h-11 w-11 rounded-xl border border-dashed border-[rgb(var(--color-error))]/30 text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5 transition-all flex-shrink-0 shadow-sm"
-                title={t('table.resetFilters')}
-              >
-                <X size={18} />
-              </button>
-            )}
+                className="mb-0 w-full"
+                inputClassName="h-11 pl-11 shadow-sm hover:border-[rgb(var(--color-border-hover))]"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0">
+              {showFilter && onFilterClick && (
+                <FilterButton
+                  onClick={onFilterClick}
+                  active={Object.values(externalFilters).some(
+                    (val) => val && (Array.isArray(val) ? val.length > 0 : val !== '')
+                  )}
+                />
+              )}
+
+              {extraControls}
+
+              {!hideFilterDropdowns &&
+                filterOptions.map((filter) => (
+                  <div
+                    key={filter.key}
+                    className={`relative flex-shrink-0 ${filter.className || ''}`}
+                  >
+                    <CustomSelect
+                      key={filter.key}
+                      value={filters[filter.key] || 'all'}
+                      options={[{ value: 'all', label: filter.label }, ...filter.options]}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFilters((prev) => ({ ...prev, [filter.key]: val }));
+                        if (!serverSide) setCurrentPage(1);
+                      }}
+                      placeholder={filter.label}
+                      size="md"
+                    />
+                  </div>
+                ))}
+
+              {!searchTerm &&
+                (() => {
+                  const hasInternalFilters = Object.values(filters).some(
+                    (val) => val && val !== 'all'
+                  );
+                  const hasExternalFilters = Object.values(externalFilters).some(
+                    (val) => val && (Array.isArray(val) ? val.length > 0 : val !== '')
+                  );
+                  const shouldShowClear =
+                    showClearFilter || hasInternalFilters || hasExternalFilters;
+
+                  if (!shouldShowClear) return null;
+
+                  return (
+                    <button
+                      onClick={() => {
+                        setFilters({});
+                        onClearFilters?.();
+                        if (!serverSide) setCurrentPage(1);
+                      }}
+                      className="flex items-center gap-2 h-11 px-4 bg-[rgb(var(--color-error))]/10 border border-[rgb(var(--color-error))]/20 rounded-xl text-sm font-semibold text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/20 hover:border-[rgb(var(--color-error))]/30 transition-all shadow-sm shrink-0"
+                    >
+                      <X size={16} />
+                      <span>Clear Results</span>
+                    </button>
+                  );
+                })()}
+            </div>
           </div>
+
+          {/* Secondary Row: Active Filter Chips */}
+          {!searchTerm &&
+            (Object.keys(filters).filter((k) => filters[k] && filters[k] !== 'all').length > 0 ||
+              Object.keys(externalFilters).filter((k) => {
+                const val = externalFilters[k];
+                return val && (Array.isArray(val) ? val.length > 0 : val !== '');
+              }).length > 0) && (
+              <div className="flex flex-wrap items-center gap-2 animate-fade-in -mt-2">
+                {/* Internal dropdown filters */}
+                {filterOptions.map((filter) => {
+                  const selectedValue = filters[filter.key];
+                  if (!selectedValue || selectedValue === 'all') return null;
+
+                  const optionLabel =
+                    filter.options.find((opt) => opt.value === selectedValue)?.label ||
+                    selectedValue;
+
+                  return (
+                    <div
+                      key={`internal-${filter.key}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[rgb(var(--color-primary))/0.08] text-[rgb(var(--color-primary))] text-xs font-semibold rounded-lg border border-[rgb(var(--color-primary))/0.15] shadow-sm"
+                    >
+                      <span className="opacity-70">{filter.label}:</span>
+                      <span>{optionLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilters((prev) => {
+                            const newFilters = { ...prev };
+                            delete newFilters[filter.key];
+                            return newFilters;
+                          });
+                          if (!serverSide) setCurrentPage(1);
+                        }}
+                        className="ml-1 hover:bg-[rgb(var(--color-primary))/0.15] rounded-md p-0.5 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* External filters from filter drawer */}
+                {Object.entries(externalFilters).map(([key, value]) => {
+                  if (!value || (Array.isArray(value) && value.length === 0) || value === '')
+                    return null;
+
+                  let displayValue = value;
+                  let label = key
+                    .replace(/([A-Z])/g, ' $1') // Add space before capital letters
+                    .replace(/^./, (str) => str.toUpperCase()) // Capitalize first letter
+                    .trim();
+
+                  // Try to get human-readable label from filterOptions
+                  const filterConfig = filterOptions.find((f) => f.key === key);
+                  if (filterConfig) {
+                    if (Array.isArray(value)) {
+                      const labels = value
+                        .map((v) => filterConfig.options.find((opt) => opt.value === v)?.label || v)
+                        .filter(Boolean);
+                      displayValue = labels.join(', ');
+                    } else {
+                      const opt = filterConfig.options.find((opt) => opt.value === value);
+                      if (opt) displayValue = opt.label;
+                    }
+                    label = filterConfig.label;
+                  } else if (
+                    typeof value === 'string' &&
+                    (key.toLowerCase().includes('date') || key.toLowerCase().includes('at'))
+                  ) {
+                    // Auto-format dates if they look like ISO strings or keys contain "date"/"at"
+                    if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
+                      displayValue = formatDate(value);
+                    }
+                  }
+
+                  return (
+                    <div
+                      key={`external-${key}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[rgb(var(--color-primary))/0.08] text-[rgb(var(--color-primary))] text-xs font-semibold rounded-lg border border-[rgb(var(--color-primary))/0.15] shadow-sm"
+                    >
+                      <span className="opacity-70">{label}:</span>
+                      <span>{displayValue}</span>
+                      {onRemoveExternalFilter && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveExternalFilter(key)}
+                          className="ml-1 hover:bg-[rgb(var(--color-primary))/0.15] rounded-md p-0.5 transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
         </div>
 
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-separate border-spacing-0" ref={tableRef}>
+          <table className="w-full text-left border-collapse" ref={tableRef}>
             <thead>
               <tr className="bg-[rgb(var(--color-background))/0.5]">
                 {onSelectionChange && (
@@ -398,12 +653,7 @@ const DataTable = ({
                 {columns.map((col, idx) => (
                   <th
                     key={idx}
-                    onClick={() =>
-                      col.sortable &&
-                      handleSort(
-                        col.sortKey || (typeof col.accessor === 'string' ? col.accessor : null)
-                      )
-                    }
+                    onClick={() => col.sortable && handleSort(col.sortKey || col.accessor)}
                     className={`
                                             px-4 py-3 text-[11px] font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider whitespace-nowrap select-none border-b border-[rgb(var(--color-border))]
                                             ${col.sortable ? 'cursor-pointer hover:text-[rgb(var(--color-text))] group' : ''}
@@ -411,7 +661,7 @@ const DataTable = ({
                                         `}
                   >
                     <div
-                      className={`flex items-center gap-1.5 ${col.className?.includes('text-center') ? 'justify-center' : ''}`}
+                      className={`flex items-center gap-0.5 ${col.className?.includes('text-center') ? 'justify-center' : ''}`}
                     >
                       {col.header}
                       {col.sortable && (
@@ -483,11 +733,11 @@ const DataTable = ({
                         <Search size={32} className="text-[rgb(var(--color-primary))] opacity-40" />
                       </div>
                       <p className="text-base font-bold text-[rgb(var(--color-text))]">
-                        {t('table.noResults') || 'No data found'}
+                        No data found
                       </p>
                       <p className="text-sm text-[rgb(var(--color-text-muted))] max-w-[280px] leading-relaxed mx-auto">
-                        {t('table.tryAdjusting') ||
-                          "We couldn't find any results matching your current filters. Try adjusting your search or date range."}
+                        We couldn&apos;t find any results matching your current filters. Try
+                        adjusting your search or date range.
                       </p>
                     </div>
                   </td>
@@ -498,43 +748,41 @@ const DataTable = ({
         </div>
 
         {/* --- PAGINATION FOOTER --- */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))/0.3] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <span className="text-xs text-[rgb(var(--color-text-muted))] font-medium">
-              {t('table.showing')}{' '}
-              {Math.min((currentPage - 1) * effectiveItemsPerPage + 1, sortedData.length)} -{' '}
-              {Math.min(currentPage * effectiveItemsPerPage, sortedData.length)} {t('table.of')}{' '}
-              {serverSide ? 'many' : sortedData.length}
-            </span>
-
-            <Pagination
-              count={totalPages}
-              page={currentPage}
-              onChange={handlePageChange}
-              shape="rounded"
-              size="small"
-              showFirstButton
-              showLastButton
-              sx={{
-                '& .MuiPaginationItem-root': {
-                  fontSize: '0.75rem',
-                  color: 'rgb(var(--color-text-muted))',
-                  borderColor: 'transparent',
-                  '&.Mui-selected': {
-                    backgroundColor: 'rgb(var(--color-primary))',
-                    color: '#fff',
-                    fontWeight: 'bold',
-                    '&:hover': { backgroundColor: 'rgb(var(--color-primary-dark))' },
-                  },
-                  '&:hover:not(.Mui-selected)': {
-                    backgroundColor: 'rgb(var(--color-background))',
-                    color: 'rgb(var(--color-text))',
-                  },
-                },
-              }}
-            />
-          </div>
-        )}
+        <div className="px-4 py-2 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))/0.3]">
+          <TablePagination
+            component="div"
+            count={
+              serverSide
+                ? serverTotalItems !== undefined
+                  ? serverTotalItems
+                  : serverTotalPages * rowsPerPage
+                : sortedData.length
+            }
+            page={currentPage - 1}
+            onPageChange={handlePageChange}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[5, 10, 25, 50, 100]}
+            labelRowsPerPage="Rows per page:"
+            sx={{
+              border: 'none',
+              color: 'rgb(var(--color-text-muted))',
+              fontSize: '0.75rem',
+              '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                margin: 0,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+              },
+              '.MuiTablePagination-select': {
+                fontWeight: 600,
+                color: 'rgb(var(--color-text))',
+              },
+              '.MuiTablePagination-actions': {
+                marginLeft: '1rem',
+              },
+            }}
+          />
+        </div>
       </div>
     </div>
   );

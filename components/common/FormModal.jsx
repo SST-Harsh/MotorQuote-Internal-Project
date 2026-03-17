@@ -4,7 +4,7 @@ import * as yup from 'yup';
 import { X, Save, ChevronDown, Eye, EyeOff, Edit3, Plus, AlertCircle, Check } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import CustomDateTimePicker from './CustomDateTimePicker';
-import { useTranslation } from '@/context/LanguageContext';
+import CustomSelect from './CustomSelect';
 
 export default function GenericFormModal({
   isOpen,
@@ -25,7 +25,6 @@ export default function GenericFormModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPasswords, setShowPasswords] = useState({});
   const [mounted, setMounted] = useState(false);
-  const { t } = useTranslation('common');
 
   useEffect(() => {
     setMounted(true);
@@ -45,23 +44,31 @@ export default function GenericFormModal({
     return all;
   };
 
+  const [initialValues, setInitialValues] = useState({});
+
   useEffect(() => {
     if (isOpen) {
-      const initialValues = {};
+      const initialVals = {};
       const flatFields = getAllFields(fields);
 
       flatFields.forEach((field) => {
         let defaultValue = field.defaultValue || '';
         if (field.name === 'status') defaultValue = 'Active';
         if (field.type === 'checkbox-group') defaultValue = [];
-        initialValues[field.name] = initialData?.[field.name] || defaultValue;
+        initialVals[field.name] = initialData?.[field.name] || defaultValue;
       });
 
-      if (initialData?.id) initialValues.id = initialData.id;
-      setFormData(initialValues);
+      if (initialData?.id) initialVals.id = initialData.id;
+      setFormData(initialVals);
+      setInitialValues(initialVals);
       setErrors({});
     }
   }, [isOpen, initialData, fields]);
+
+  const isDirty = React.useMemo(() => {
+    // Simple stringify comparison for flat form data
+    return JSON.stringify(formData) !== JSON.stringify(initialValues);
+  }, [formData, initialValues]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -267,6 +274,26 @@ export default function GenericFormModal({
       );
     }
 
+    if (isSelect) {
+      return (
+        <div key={idx} className={field.className || 'space-y-1.5'}>
+          <FieldLabel label={field.label} required={isRequired} />
+          <CustomSelect
+            name={field.name}
+            options={field.options}
+            value={formData[field.name]}
+            onChange={handleChange}
+            placeholder={field.placeholder || `Select ${field.label || '...'}`}
+            isDisabled={field.disabled}
+            error={!!error}
+            icon={Icon}
+            isSearchable={field.isSearchable}
+          />
+          <ErrorMessage error={error} />
+        </div>
+      );
+    }
+
     return (
       <div key={idx} className={field.className || 'space-y-1.5'}>
         <FieldLabel label={field.label} required={isRequired} />
@@ -278,25 +305,7 @@ export default function GenericFormModal({
             </div>
           )}
 
-          {isSelect ? (
-            <div className="relative w-full">
-              <select
-                name={field.name}
-                value={formData[field.name] || ''}
-                onChange={handleChange}
-                className={`w-full ${Icon ? 'pl-2' : 'pl-4'} pr-10 py-3 sm:py-3.5 bg-transparent text-sm sm:text-base font-medium text-[rgb(var(--color-text))] outline-none appearance-none cursor-pointer min-h-[44px]`}
-              >
-                {field.options?.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] pointer-events-none">
-                <ChevronDown size={16} />
-              </div>
-            </div>
-          ) : field.type === 'textarea' ? (
+          {field.type === 'textarea' ? (
             <textarea
               name={field.name}
               value={formData[field.name] || ''}
@@ -374,7 +383,9 @@ export default function GenericFormModal({
                 {title}
               </h2>
               <p className="text-sm text-[rgb(var(--color-text-muted))]">
-                {subtitle === 'Please enter the details below.' ? t('form.enterDetails') : subtitle}
+                {subtitle === 'Please enter the details below.'
+                  ? 'Please enter the details below.'
+                  : subtitle}
               </p>
             </div>
           </div>
@@ -432,22 +443,22 @@ export default function GenericFormModal({
               className="px-5 py-2.5 text-sm font-semibold text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-xl transition-colors"
               disabled={isSubmitting}
             >
-              {t('cancel')}
+              Cancel
             </button>
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-8 py-2.5 bg-[rgb(var(--color-primary))] text-white text-sm font-bold rounded-xl shadow-lg shadow-[rgb(var(--color-primary)/0.25)] hover:bg-[rgb(var(--color-primary-dark))] hover:translate-y-[-1px] active:translate-y-[1px] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              disabled={isSubmitting || (isEditMode && !isDirty)}
+              className="flex items-center gap-2 px-8 py-2.5 bg-[rgb(var(--color-primary))] text-white text-sm font-bold rounded-xl shadow-lg shadow-[rgb(var(--color-primary)/0.25)] hover:bg-[rgb(var(--color-primary-dark))] hover:translate-y-[-1px] active:translate-y-[1px] transition-all disabled:opacity-40 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  {t('form.saving')}
+                  Saving...
                 </>
               ) : (
                 <>
                   <Save size={18} />
-                  {isEditMode ? t('form.saveChanges') : t('form.add')}
+                  {isEditMode ? 'Save Changes' : 'Add'}
                 </>
               )}
             </button>

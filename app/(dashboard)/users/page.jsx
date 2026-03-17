@@ -1,7 +1,8 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
 import {
   useStaffList,
@@ -15,50 +16,50 @@ import { useDealerships } from '@/hooks/useDealerships';
 import { SkeletonTable } from '@/components/common/Skeleton';
 
 const SuperAdminUsers = dynamic(() => import('@/components/views/users/SuperAdminUsers'));
-const AdminUsers = dynamic(() => import('@/components/views/users/AdminUsers'));
 const StaffManagement = dynamic(() => import('@/components/views/users/StaffManagement'));
+const SupportStaffUsers = dynamic(() => import('@/components/views/users/SupportStaffUsers'));
 
 export default function UsersPage() {
   const { user } = useAuth();
-  const [page, setPage] = useState(1);
-  const [limit] = useState(10);
-  const [activeFilters, setActiveFilters] = useState({
-    name: '',
-    roles: [],
-    statuses: [],
-    dealership: '',
-    tags: [],
+  const USER_FILTERS_KEY = 'super_admin_users_filters';
+
+  const pathname = usePathname();
+  const isRefresh = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [activeFilters, setActiveFilters] = useState(() => {
+    const defaultFilters = {
+      name: '',
+      roles: [],
+      statuses: [],
+      dealership: '',
+      tags: [],
+    };
+    if (typeof window !== 'undefined' && isRefresh) {
+      try {
+        const saved = sessionStorage.getItem(USER_FILTERS_KEY);
+        return saved ? JSON.parse(saved) : defaultFilters;
+      } catch (_) {}
+    }
+    return defaultFilters;
   });
 
-  const queryParams = {
-    page,
-    limit,
-    ...(activeFilters.name && { search: activeFilters.name }),
-    ...(activeFilters.roles?.length > 0 && { role_ids: activeFilters.roles }),
-    ...(activeFilters.statuses?.length > 0 && { status: activeFilters.statuses }),
-    ...(activeFilters.tags?.length > 0 && { tag_ids: activeFilters.tags }),
-    ...(activeFilters.dealership && { dealership_id: activeFilters.dealership }),
-  };
+  // Sync activeFilters to sessionStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(USER_FILTERS_KEY, JSON.stringify(activeFilters));
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [activeFilters, pathname]);
 
-  if (user?.role === 'admin' && !activeFilters.dealership) {
-    const dealerId = user.dealership?.id || user.dealership_id || user.dealership;
-    if (dealerId) {
-      queryParams.dealership_id = dealerId;
-    }
-  }
-
-  // Strip empty/null/undefined values to prevent sending invalid params (e.g. search=, dealership_id=)
-  Object.keys(queryParams).forEach((key) => {
-    if (queryParams[key] === '' || queryParams[key] === null || queryParams[key] === undefined) {
-      delete queryParams[key];
-    }
-  });
+  // Build query params for non-search filters only (search is handled client-side by DataTable)
+  const queryParams = {};
 
   const isDealerManager = user?.role === 'dealer_manager';
   const isSuperAdmin = user?.role === 'super_admin';
-  const isAdmin = user?.role === 'admin';
 
-  // User Management Hooks (Global)
+  // User Management Hooks (Global) — fetch all users, DataTable handles client-side search/pagination
   const {
     data: globalUsersData,
     isLoading: globalUsersLoading,
@@ -107,12 +108,10 @@ export default function UsersPage() {
     ? dealerships
     : dealerships?.dealerships || dealerships?.data?.dealerships || dealerships?.data || [];
 
-  const totalUsers = usersData?.total || usersData?.totalUsers || users.length;
-
   console.log('[UsersPage] Debug:', {
     isDealerManager,
     userRole: user?.role,
-    usersDataLength: Array.isArray(usersData) ? usersData.length : 'Not Array',
+    usersCount: users.length,
     isLoadingDetails: { usersLoading, rolesLoading, permissionsLoading, dealershipsLoading },
   });
 
@@ -177,19 +176,16 @@ export default function UsersPage() {
   if (!user) {
     return <div className="p-8">Please log in to view users.</div>;
   }
-  // Filter dealerships based on role
-  const filteredDealerships = isAdmin
-    ? dealershipsArray.filter(
-        (d) =>
-          d.id === (user.dealership?.id || user.dealership_id) ||
-          d.dealer_owner === user?.id ||
-          d.dealer_owner_name === user?.id ||
-          d.primary_admin_id === user?.id ||
-          d.dealer?.id === user?.id
-      )
-    : isDealerManager && user?.dealership_id
-      ? dealershipsArray.filter((d) => d.id === (user.dealership?.id || user.dealership_id))
-      : dealershipsArray;
+
+  // For dealer_manager: use the dealerships from the auth user object (returned by the API on the user profile).
+  // For super_admin: use the global dealerships API fetch.
+  const filteredDealerships = isDealerManager
+    ? Array.isArray(user?.dealerships)
+      ? user.dealerships
+      : user?.dealership
+        ? [user.dealership]
+        : []
+    : dealershipsArray;
 
   const commonProps = {
     users,
@@ -198,10 +194,6 @@ export default function UsersPage() {
     dealerships: filteredDealerships,
     loading: isLoading,
     onRefresh: refetchUsers,
-    serverSide: true,
-    serverTotalPages: Math.ceil(totalUsers / limit),
-    serverCurrentPage: page,
-    onServerPageChange: setPage,
     onSave: handleSaveUser,
     onAction: handleAction,
     assignedDealerships: filteredDealerships,
@@ -212,11 +204,10 @@ export default function UsersPage() {
   switch (user.role) {
     case 'super_admin':
       return <SuperAdminUsers {...commonProps} />;
-    case 'admin':
-      return <AdminUsers {...commonProps} />;
-    case 'dealer':
     case 'dealer_manager':
       return <StaffManagement {...commonProps} />;
+    case 'support_staff':
+      return <SupportStaffUsers />;
     default:
       return (
         <div className="p-8 text-center text-red-500">

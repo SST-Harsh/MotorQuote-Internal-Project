@@ -20,6 +20,8 @@ const FileManager = ({
   context = 'global', // 'global', 'quote', 'dealership', 'user'
   contextId = null,
   allowUpload = true,
+  readOnly = false,
+  fileFilter = null,
   initialViewMode = 'grid',
   title = 'Documents',
 }) => {
@@ -66,6 +68,10 @@ const FileManager = ({
   };
 
   const handleFileAction = async (action, file) => {
+    if (readOnly && ['delete', 'rename', 'share', 'versions'].includes(action)) {
+      return;
+    }
+
     if (action === 'delete') {
       const result = await Swal.fire({
         title: 'Delete File?',
@@ -236,12 +242,13 @@ const FileManager = ({
           : selectedType === 'documents'
             ? !fileType.startsWith('image/')
             : true;
+    const matchesCustomFilter = typeof fileFilter === 'function' ? fileFilter(file) : true;
 
-    return matchesSearch && matchesType;
+    return matchesSearch && matchesType && matchesCustomFilter;
   });
 
   return (
-    <div className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-sm border border-[rgb(var(--color-border))] overflow-hidden flex flex-col h-full min-h-[500px]">
+    <div className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-sm border border-[rgb(var(--color-border))] overflow-hidden flex flex-col h-full min-h-[400px]">
       {/* Header */}
       <div className="p-4 border-b border-[rgb(var(--color-border))] flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
@@ -331,6 +338,7 @@ const FileManager = ({
                 files={filteredFiles}
                 viewMode={viewMode}
                 onFileAction={handleFileAction}
+                isPublic={readOnly}
               />
             )}
           </div>

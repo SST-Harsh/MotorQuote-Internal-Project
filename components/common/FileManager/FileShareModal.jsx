@@ -20,6 +20,7 @@ import {
 import fileService from '@/services/fileService';
 import Swal from 'sweetalert2';
 import CustomDateTimePicker from '@/components/common/CustomDateTimePicker';
+import CustomSelect from '@/components/common/CustomSelect';
 import * as yup from 'yup';
 
 const FileShareModal = ({ file, onClose }) => {
@@ -441,18 +442,19 @@ const FileShareModal = ({ file, onClose }) => {
                     <label className="text-xs font-semibold text-[rgb(var(--color-text-muted))] flex items-center gap-2">
                       <Clock size={12} /> Expiration (Hours)
                     </label>
-                    <select
+                    <CustomSelect
                       value={otpExpiresInHours}
                       onChange={(e) => setOtpExpiresInHours(e.target.value)}
-                      className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] focus:border-[rgb(var(--color-primary))] transition-all"
-                    >
-                      <option value="1">1 Hour</option>
-                      <option value="2">2 Hours</option>
-                      <option value="12">12 Hours</option>
-                      <option value="24">24 Hours</option>
-                      <option value="48">48 Hours</option>
-                      <option value="168">1 Week</option>
-                    </select>
+                      options={[
+                        { value: '1', label: '1 Hour' },
+                        { value: '2', label: '2 Hours' },
+                        { value: '12', label: '12 Hours' },
+                        { value: '24', label: '24 Hours' },
+                        { value: '48', label: '48 Hours' },
+                        { value: '168', label: '1 Week' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
                   <button

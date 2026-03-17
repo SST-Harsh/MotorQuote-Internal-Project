@@ -3,10 +3,12 @@ import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import dynamic from 'next/dynamic';
 
+import { canViewReports } from '@/utils/roleUtils';
+import AccessDenied from '@/components/common/AccessDenied';
+
 const SuperAdminReportView = dynamic(
   () => import('@/components/views/report/SuperAdminReportView')
 );
-const AdminReportView = dynamic(() => import('@/components/views/report/AdminReportView'));
 const DealerReportView = dynamic(() => import('@/components/views/report/DealerReportView'));
 
 export default function ReportsPage() {
@@ -16,18 +18,23 @@ export default function ReportsPage() {
     return <div className="p-8">Please log in.</div>;
   }
 
+  // Check if user has permission to view reports
+  const hasAccess = canViewReports(user);
+
+  if (!hasAccess) {
+    return <AccessDenied />;
+  }
+
   switch (user.role) {
-    case 'admin':
-      return <AdminReportView />;
     case 'super_admin':
       return <SuperAdminReportView />;
     case 'dealer_manager':
       return <DealerReportView />;
     default:
       return (
-        <div className="p-8 text-center text-red-500">
-          Access Denied. This page is for authorized users only.
-        </div>
+        <AccessDenied
+          message={`Access Denied: Role (${user.role}) is not authorized for this view.`}
+        />
       );
   }
 }

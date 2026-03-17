@@ -12,6 +12,7 @@ export const userKeys = {
   details: () => [...userKeys.all, 'detail'],
   detail: (id) => [...userKeys.details(), id],
   activities: (id) => [...userKeys.detail(id), 'activities'],
+  suspended: () => [...userKeys.all, 'suspended'],
 };
 
 /**
@@ -110,6 +111,136 @@ export const useUserLoginHistory = (id, params = {}) => {
   });
 };
 
+/**
+ * Fetch suspended users
+ */
+export const useSuspendedUsers = (params = {}, options = {}) => {
+  return useQuery({
+    queryKey: userKeys.suspended(),
+    queryFn: () => userService.getSuspendedUsers(params),
+    select: (data) => {
+      // Handle different response formats
+      const usersArray = Array.isArray(data)
+        ? data
+        : data?.users || data?.data?.users || data?.data || [];
+      return usersArray;
+    },
+    ...options,
+  });
+};
+
+/**
+ * Suspend user mutation
+ */
+export const useSuspendUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, reason }) => userService.suspendUser(userId, reason),
+    onSuccess: () => {
+      // Invalidate users list and suspended users list
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.suspended() });
+      showSuccess('Success', 'User has been suspended');
+    },
+    onError: (error) => {
+      showError('Error', error.response?.data?.message || 'Failed to suspend user');
+    },
+  });
+};
+
+/**
+ * Restore user mutation
+ */
+export const useRestoreUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId) => userService.restoreUser(userId),
+    onSuccess: () => {
+      // Invalidate users list and suspended users list
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.suspended() });
+      showSuccess('Success', 'User has been restored');
+    },
+    onError: (error) => {
+      showError('Error', error.response?.data?.message || 'Failed to restore user');
+    },
+  });
+};
+
+/**
+ * Bulk Activate Users mutation
+ */
+export const useBulkActivateUsers = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userIds) => userService.bulkActivate(userIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.suspended() });
+      showSuccess('Success', 'Selected users have been activated');
+    },
+    onError: (error) => {
+      showError('Error', error.response?.data?.message || 'Failed to activate users');
+    },
+  });
+};
+
+/**
+ * Bulk Deactivate Users mutation
+ */
+export const useBulkDeactivateUsers = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userIds) => userService.bulkDeactivate(userIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.suspended() });
+      showSuccess('Success', 'Selected users have been deactivated');
+    },
+    onError: (error) => {
+      showError('Error', error.response?.data?.message || 'Failed to deactivate users');
+    },
+  });
+};
+export const useEnable2FA = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId) => userService.enable2FA(userId),
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(userId) });
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      showSuccess('Success', '2FA enabled for user');
+    },
+    onError: (error) => {
+      showError('Error', error.response?.data?.message || 'Failed to enable 2FA');
+    },
+  });
+};
+
+/**
+ * Disable 2FA for individual user
+ */
+export const useDisable2FA = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId) => userService.disable2FA(userId),
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(userId) });
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      showSuccess('Success', '2FA disabled for user');
+    },
+    onError: (error) => {
+      showError('Error', error.response?.data?.message || 'Failed to disable 2FA');
+    },
+  });
+};
+
 export default {
   useUsers,
   useUser,
@@ -118,4 +249,9 @@ export default {
   useDeleteUser,
   useUserActivities,
   useUserLoginHistory,
+  useSuspendedUsers,
+  useSuspendUser,
+  useRestoreUser,
+  useBulkActivateUsers,
+  useBulkDeactivateUsers,
 };

@@ -6,72 +6,78 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import Link from 'next/link';
 import userService from '@/services/userService';
-const SidebarNavItem = ({ item, isActive, onItemClick, pathname, isOpen }) => {
-  const [isSubOpen, setIsSubOpen] = useState(false);
+const SidebarNavItem = ({ item, isActive, onItemClick, pathname }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const hasSubItems = item.subItems && item.subItems.length > 0;
-  const isSubActive = hasSubItems && item.subItems.some((sub) => pathname === sub.href);
+  const isSubActive =
+    hasSubItems &&
+    item.subItems.some((sub) => pathname === sub.href || pathname.startsWith(sub.href + '/'));
 
   useEffect(() => {
-    if (isSubActive) setIsSubOpen(true);
+    if (isSubActive) setIsOpen(true);
   }, [isSubActive]);
 
   if (hasSubItems) {
     return (
       <div className="space-y-1">
         <button
-          onClick={() => setIsSubOpen(!isSubOpen)}
-          className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 group/item
+          onClick={() => setIsOpen(!isOpen)}
+          className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 group
                         ${
-                          isSubActive || isSubOpen
-                            ? 'bg-sidebar-active-bg text-sidebar-active-text shadow-md'
-                            : 'text-sidebar-text hover:bg-sidebar-hover/10 hover:text-sidebar-heading'
+                          isSubActive || isOpen
+                            ? 'text-[rgb(var(--color-primary))] bg-[rgb(var(--color-surface))]'
+                            : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] hover:text-[rgb(var(--color-text))]'
                         }`}
         >
-          <span className="flex items-center gap-4 min-w-0">
+          <span className="flex items-center gap-3">
             <span
-              className={`flex h-8 w-8 items-center text-xl justify-center rounded-lg transition-colors shrink-0
-                            ${isSubActive ? 'bg-sidebar-active-bg/10' : 'bg-transparent group-hover/item:bg-sidebar-active-bg/5'}
+              className={`flex h-8 w-8 items-center text-xl justify-center rounded-lg transition-colors
+                            ${isSubActive ? 'bg-[rgb(var(--color-primary))/0.1]' : 'bg-transparent group-hover:bg-[rgb(var(--color-surface))]'}
                         `}
             >
               {item.icon}
             </span>
-            <span
-              className={`${isOpen ? 'opacity-100' : 'opacity-0 group-hover/sidebar:opacity-100'} transition-opacity duration-500 delay-100 whitespace-nowrap truncate `}
-            >
-              {item.label}
-            </span>
+            {item.label}
           </span>
           <ChevronDown
             size={16}
-            className={`transition-all duration-200 ${isOpen ? 'opacity-100' : 'opacity-0 group-hover/sidebar:opacity-100'} ${isSubOpen ? 'rotate-180' : ''}`}
+            className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           />
         </button>
 
-        {isSubOpen && (
-          <div className="space-y-1 overflow-hidden transition-all duration-500 delay-100">
+        {isOpen && (
+          <div className="ps-4 space-y-1">
             {item.subItems.map((subItem) => {
-              const isChildActive = pathname === subItem.href;
+              // Find the best matching sub-item among siblings
+              const isBestMatch = (s) =>
+                pathname === s.href || (s.href !== '/' && pathname.startsWith(s.href + '/'));
+              const matchingSiblings = item.subItems.filter(isBestMatch);
+              // If multiple match, the one with the longest href is the most specific
+              const bestMatch = matchingSiblings.sort((a, b) => b.href.length - a.href.length)[0];
+              const isChildActive = bestMatch && subItem.href === bestMatch.href;
               return (
                 <Link
                   key={subItem.label}
                   href={subItem.href}
                   onClick={onItemClick}
-                  className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors group/subitem
+                  className={`block rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200
                                         ${
                                           isChildActive
-                                            ? 'text-sidebar-active-text bg-sidebar-active-bg/5'
-                                            : 'text-sidebar-text hover:text-sidebar-heading hover:bg-sidebar-hover/10'
+                                            ? 'text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary)/0.1)] shadow-sm'
+                                            : 'text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))]'
                                         }`}
                 >
-                  <span className="flex items-center gap-4 min-w-0">
-                    <span className="flex h-5 w-5 items-center justify-center shrink-0 ml-[10px]">
-                      {subItem.icon || <span className="w-1.5 h-1.5 rounded-full bg-current" />}
-                    </span>
-                    <span
-                      className={`${isOpen ? 'opacity-100' : 'opacity-0 group-hover/sidebar:opacity-100'} transition-opacity duration-500 delay-100 whitespace-nowrap truncate `}
-                    >
-                      {subItem.label}
-                    </span>
+                  <span className="flex items-center gap-3">
+                    {subItem.icon && (
+                      <span
+                        className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors
+                                                ${isChildActive ? 'bg-[rgb(var(--color-surface))/0.5]' : 'bg-transparent'}
+                                            `}
+                      >
+                        {subItem.icon}
+                      </span>
+                    )}
+                    {subItem.label}
                   </span>
                 </Link>
               );
@@ -86,35 +92,31 @@ const SidebarNavItem = ({ item, isActive, onItemClick, pathname, isOpen }) => {
     <Link
       href={item.href || '#'}
       onClick={onItemClick}
-      className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 group/item
+      className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 group
                 ${
                   isActive
-                    ? 'bg-sidebar-active-bg text-sidebar-active-text shadow-md'
-                    : 'text-sidebar-text hover:bg-sidebar-hover/10 hover:text-sidebar-heading'
+                    ? 'bg-[rgb(var(--color-primary)/0.1)] text-[rgb(var(--color-primary))] shadow-sm'
+                    : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] hover:text-[rgb(var(--color-text))]'
                 }`}
     >
-      <span className="flex items-center gap-4 min-w-0">
+      <span className="flex items-center gap-3">
         <span
-          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors shrink-0
-                    ${isActive ? 'bg-sidebar-active-bg/10' : 'bg-transparent group-hover/item:bg-sidebar-active-bg/5'}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors
+                    ${isActive ? 'bg-[rgb(var(--color-surface))/0.5]' : 'bg-transparent group-hover:bg-[rgb(var(--color-surface))]'}
                 `}
         >
           {item.icon}
         </span>
-        <span
-          className={`${isOpen ? 'opacity-100' : 'opacity-0 group-hover/sidebar:opacity-100'} transition-opacity duration-500 delay-100 whitespace-nowrap truncate `}
-        >
-          {item.label}
-        </span>
+        {item.label}
       </span>
 
       {item.badge && (
         <span
-          className={`text-xs font-bold px-2 py-0.5 rounded-full border ${isOpen ? 'opacity-100' : 'opacity-0 group-hover/sidebar:opacity-100'} transition-opacity duration-500 delay-100
+          className={`text-xs font-bold px-2 py-0.5 rounded-full border
                     ${
                       isActive
-                        ? 'bg-sidebar-active-bg/10 text-sidebar-active-text border-transparent'
-                        : 'bg-sidebar-active-bg text-sidebar-active-text border-transparent'
+                        ? 'bg-[rgb(var(--color-surface))] text-[rgb(var(--color-primary))] border-transparent shadow-sm'
+                        : 'bg-[rgb(var(--color-primary))] text-white border-transparent'
                     }
                 `}
         >
@@ -125,16 +127,14 @@ const SidebarNavItem = ({ item, isActive, onItemClick, pathname, isOpen }) => {
   );
 };
 
-const SidebarNav = ({ sections = [], onItemClick, isOpen }) => {
+const SidebarNav = ({ sections = [], onItemClick }) => {
   const pathname = usePathname();
 
   return (
-    <nav className="flex-1 space-y-8 overflow-y-auto px-4 py-4 scrollbar-hide hover:scrollbar-default transition-all">
+    <nav className="flex-1 space-y-8 overflow-y-auto px-4 py-4">
       {sections.map((section) => (
         <div key={section.title}>
-          <p
-            className={`text-xs font-bold uppercase tracking-wider text-sidebar-text/70 mb-4 px-2 ${isOpen ? 'opacity-100' : 'opacity-0 group-hover/sidebar:opacity-100'} transition-opacity duration-500 delay-100 whitespace-nowrap truncate`}
-          >
+          <p className="text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-text-muted))] mb-4 px-2">
             {section.title}
           </p>
           <div className="space-y-1">
@@ -142,10 +142,12 @@ const SidebarNav = ({ sections = [], onItemClick, isOpen }) => {
               <SidebarNavItem
                 key={item.label}
                 item={item}
-                isActive={pathname === item.href}
+                isActive={
+                  pathname === item.href ||
+                  (item.href !== '/' && pathname.startsWith(item.href + '/'))
+                }
                 onItemClick={onItemClick}
                 pathname={pathname}
-                isOpen={isOpen}
               />
             ))}
           </div>
@@ -155,34 +157,36 @@ const SidebarNav = ({ sections = [], onItemClick, isOpen }) => {
   );
 };
 
-import { useLanguage } from '@/context/LanguageContext';
-import { translateUserRole } from '@/utils/i18n';
+import { useConfig } from '@/context/ConfigContext';
 
 export default function Sidebar({ sections, isOpen, onClose, user: propUser }) {
+  const { config } = useConfig();
+  const { branding } = config;
   const sectionsToRender = sections || [];
   const { user, logout } = useAuth();
-  const { t, isRTL } = useLanguage();
 
   // Fallback for user display
   const getDisplayName = () => {
     const u = user || propUser;
     if (u && u.first_name && u.last_name) return `${u.first_name} ${u.last_name}`;
     if (u && u.name) return u.name;
-    return t('common.user', 'User');
+    return 'User';
   };
   const displayName = getDisplayName();
 
   const getDisplayRole = () => {
     const role = user?.role || propUser?.role || 'user';
-    return translateUserRole(role, t);
+    // Capitalize role as fallback
+    return role
+      .split('_')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
   };
   const displayRole = getDisplayRole();
 
+  // Use u (resolved user) for avatar as well
   const u = user || propUser;
-  const displayAvatar =
-    u?.avatar ||
-    u?.profile_picture ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
+  const displayAvatar = u?.avatar || u?.profile_picture || '/assets/avatar-placeholder.png';
 
   return (
     <>
@@ -195,71 +199,73 @@ export default function Sidebar({ sections, isOpen, onClose, user: propUser }) {
       )}
 
       <aside
-        className={`group/sidebar peer fixed top-0 start-0 h-screen bg-sidebar-bg border-e border-sidebar-border flex flex-col z-50 transition-all duration-500 delay-100 ease-in-out
-        ${isOpen ? 'translate-x-0 w-[280px]' : isRTL ? 'translate-x-full lg:translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        lg:w-[88px] lg:hover:w-[280px]
+        className={`
+        fixed top-0 start-0 h-screen w-[280px] bg-[rgb(var(--color-surface))] border-e border-[rgb(var(--color-border))] 
+        flex flex-col z-50 transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}
       >
-        <div className="h-20 flex items-center px-6 border-b border-white/10 overflow-hidden">
-          <div className="flex items-center gap-4 min-w-[240px]">
-            <div className="w-10 h-10 bg-sidebar-active-bg rounded-xl flex items-center justify-center text-black font-bold text-xl shrink-0">
-              M
-            </div>
-            <div
-              className={`${isOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-500 delay-100`}
-            >
+        <div className="h-20 flex items-center px-6 border-b border-[rgb(var(--color-border))]">
+          <div className="flex items-center gap-3">
+            <Image
+              src={branding.logoUrl || '/assets/image.png'}
+              alt={`${branding.appName} Logo`}
+              width={48}
+              height={48}
+              className="w-9 h-9 rounded-xl object-contain"
+              priority
+            />
+            <div>
               <h1
-                className="text-xl leading-none text-[rgb(var(--color-text-muted))] tracking-wide whitespace-nowrap"
+                className="text-xl leading-none text-[rgb(var(--color-text))]"
                 style={{ fontFamily: 'var(--font-racing-sans), sans-serif' }}
               >
-                MotorQuote
+                {branding.appName}
               </h1>
+              <p className="text-[10px] text-[rgb(var(--color-text-muted))] uppercase tracking-widest mt-1 font-semibold">
+                Sell Made Simple
+              </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="ms-auto lg:hidden text-[rgb(var(--color-text-muted))] hover:bg-white/5 p-2 rounded-lg"
+            className="ms-auto lg:hidden text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] p-2 rounded-lg"
           >
             <X size={20} />
           </button>
         </div>
 
-        <SidebarNav sections={sectionsToRender} onItemClick={onClose} isOpen={isOpen} />
+        <SidebarNav sections={sectionsToRender} onItemClick={onClose} />
 
-        <div className="p-4 border-t border-white/10 overflow-hidden">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 min-w-[240px]">
-            <div className="w-10 h-10 rounded-full bg-gray-700 border-2 border-gray-600 shadow-sm overflow-hidden relative shrink-0">
+        <div className="p-4 border-t border-[rgb(var(--color-border))]">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))]">
+            <div className="w-10 h-10 rounded-full bg-[rgb(var(--color-surface))] border-2 border-[rgb(var(--color-surface))] shadow-sm overflow-hidden relative">
               <Image
-                key={displayAvatar}
+                key={displayAvatar} // Force re-mount if prop changes
                 src={displayAvatar}
                 alt={displayName}
                 fill
                 className="object-cover"
                 sizes="40px"
-                unoptimized={true}
+                unoptimized={true} // Skip server-side optimization to prevent crashes on bad URLs
                 onError={(e) => {
-                  const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
-                  if (e.currentTarget.src !== fallback) {
-                    e.currentTarget.src = fallback;
-                    e.currentTarget.srcset = fallback;
-                  }
+                  e.currentTarget.src = '/assets/avatar-placeholder.png';
+                  e.currentTarget.srcset = '/assets/avatar-placeholder.png';
                 }}
               />
             </div>
 
-            <div
-              className={`flex-1 min-w-0 ${isOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-500 delay-100`}
-            >
-              <p className="text-sm font-bold text-[rgb(var(--color-text-muted))] truncate">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-[rgb(var(--color-text))] truncate">
                 {displayName}
               </p>
               <p className="text-xs text-[rgb(var(--color-text-muted))] truncate">{displayRole}</p>
             </div>
 
             <button
-              className={`${isOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-500 delay-100 p-2 text-gray-400 hover:text-red-400 hover:bg-white/10 rounded-lg`}
-              title={t('logout')}
+              className="p-2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-surface))] rounded-lg transition-colors"
+              title="Logout"
               onClick={logout}
             >
               <LogOut size={18} />

@@ -184,7 +184,7 @@ export default function PublicFileSharePage({ token }) {
       {/* Sticky Viewer Top Bar */}
       {!loading && !error && (
         <div className="sticky top-0 z-[100] bg-white/80 backdrop-blur-xl border-b border-gray-200/80 px-4 py-3 shadow-sm">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 min-w-0">
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-100">
                 <Share2 className="text-[rgb(var(--color-primary))] w-4 h-4" />

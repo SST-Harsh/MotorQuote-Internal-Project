@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
+import {
+  useUsers,
+  useCreateUser,
+  useUpdateUser,
+  useDeleteUser,
+  useSuspendUser,
+  useRestoreUser,
+  useEnable2FA,
+  useDisable2FA,
+} from '@/hooks/useUsers';
 import { useDealerships } from '@/hooks/useDealerships';
 import { usePreference } from '@/context/PreferenceContext';
 import DataTable from '../../common/DataTable';
@@ -34,178 +43,47 @@ import {
   Fingerprint,
   User2,
   LucideActivitySquare,
-  Users,
-  TrendingUp, // Added
-  UserCheck, // Restored
-  UserX, // Restored
+  ShieldCheck,
 } from 'lucide-react';
 import userService from '../../../services/userService';
-import { SkeletonTable } from '../../common/Skeleton';
+import auditService from '@/services/auditService';
+import { SkeletonTable } from '@/components/common/Skeleton';
+import { useAuth } from '@/context/AuthContext';
+import PageHeader from '@/components/common/PageHeader';
+import TagInput from '../../common/tags/TagInput';
 import TagList from '../../common/tags/TagList';
 import tagService from '@/services/tagService';
 import MultiSelect from '../../common/MultiSelect';
-import { useTranslation } from '@/context/LanguageContext';
-import { useAuth } from '@/context/AuthContext';
-import TagInput from '../../common/tags/TagInput';
-import permissionService from '../../../services/permissionService';
+import PhoneInput from '../../common/PhoneInput';
+import {
+  canCreateUsers,
+  canEditUsers,
+  canDeleteUsers,
+  hasPermission,
+  canImpersonate,
+  normalizeRole,
+} from '@/utils/roleUtils';
 
-// Reusing DesignWidget Pattern locally for now (should be shared later)
-const StatWidget = ({ title, value, icon: Icon, color, trend }) => (
-  <div className="bg-[rgb(var(--color-surface))] rounded-3xl p-6 shadow-sm border border-[rgb(var(--color-border))] flex items-start justify-between hover:shadow-md transition-all group">
-    <div>
-      <p className="text-sm font-semibold text-[rgb(var(--color-text-muted))] mb-1">{title}</p>
-      <h3 className="text-3xl font-bold text-[rgb(var(--color-text))]">{value}</h3>
-      {trend && (
-        <div
-          className={`flex items-center gap-1 mt-2 text-xs font-medium ${trend.positive ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'} px-2 py-0.5 rounded-full w-fit`}
-        >
-          <TrendingUp size={12} className={trend.positive ? '' : 'rotate-180'} />
-          <span>{trend.label}</span>
-        </div>
-      )}
-    </div>
-    <div
-      className={`p-3 rounded-2xl ${color} bg-opacity-10 text-[rgb(var(--color-text))] group-hover:scale-110 transition-transform duration-300 shadow-sm border border-[rgb(var(--color-border))/0.5]`}
-    >
-      <Icon
-        size={24}
-        className={`text-${color.replace('bg-', '').replace('-500', '-600')}`}
-        style={{ color: color.includes('lime') ? '#a3e635' : '' }}
-      />
-    </div>
-  </div>
-);
-const PermissionsAccordion = ({ value = [], onChange, options = [] }) => {
-  const [expanded, setExpanded] = useState({});
+const normalizePermissionIds = (input) => {
+  if (!Array.isArray(input)) return [];
+  const ids = input
+    .map((p) => {
+      if (!p) return null;
+      if (typeof p === 'string') return p;
+      if (typeof p === 'number') return String(p);
+      if (typeof p === 'object') {
+        if (p.value) return String(p.value);
+        if (p.id) return String(p.id);
+      }
+      return null;
+    })
+    .filter(Boolean);
 
-  const grouped = useMemo(
-    () =>
-      options.reduce((acc, p) => {
-        const category = p.code ? p.code.split('.')[0] : 'Other';
-        const catLabel = category.charAt(0).toUpperCase() + category.slice(1);
-        if (!acc[catLabel]) acc[catLabel] = [];
-        acc[catLabel].push(p);
-        return acc;
-      }, {}),
-    [options]
-  );
-
-  useEffect(() => {
-    const defaults = Object.keys(grouped).reduce((acc, key) => ({ ...acc, [key]: true }), {});
-    setExpanded(defaults);
-  }, [grouped]);
-
-  const toggleCategory = (cat) => {
-    setExpanded((prev) => ({ ...prev, [cat]: !prev[cat] }));
-  };
-
-  const togglePerm = (id) => {
-    const current = new Set(value);
-    if (current.has(id)) current.delete(id);
-    else current.add(id);
-    onChange(Array.from(current));
-  };
-
-  const handleSelectAll = (catPerms) => {
-    const allIds = catPerms.map((p) => p.value);
-    const current = new Set(value);
-    const allSelected = allIds.every((id) => current.has(id));
-
-    if (allSelected) {
-      allIds.forEach((id) => current.delete(id));
-    } else {
-      allIds.forEach((id) => current.add(id));
-    }
-    onChange(Array.from(current));
-  };
-
-  return (
-    <div className="space-y-4">
-      {Object.entries(grouped).map(([category, perms]) => {
-        const isExpanded = expanded[category];
-        const selectedCount = perms.filter((p) => value.includes(p.value)).length;
-        const isAllSelected = perms.length > 0 && selectedCount === perms.length;
-
-        return (
-          <div
-            key={category}
-            className="bg-[rgb(var(--color-surface))] rounded-xl border border-[rgb(var(--color-border))] overflow-hidden shadow-sm transition-all hover:border-[rgb(var(--color-primary))]/30"
-          >
-            <div
-              className="px-4 py-3 bg-[rgb(var(--color-background))]/50 border-b border-[rgb(var(--color-border))] flex items-center justify-between cursor-pointer select-none"
-              onClick={() => toggleCategory(category)}
-            >
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleCategory(category);
-                  }}
-                  className="p-1 hover:bg-[rgb(var(--color-background))] rounded-md transition-colors"
-                >
-                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold text-sm text-[rgb(var(--color-text))]">
-                    {category} Management
-                  </h4>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[rgb(var(--color-background))] text-[rgb(var(--color-text-muted))] border border-[rgb(var(--color-border))]">
-                    {selectedCount}/{perms.length}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelectAll(perms);
-                }}
-                className="text-xs font-medium text-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary-dark))] px-2 py-1 rounded hover:bg-[rgb(var(--color-primary))]/5 transition-colors"
-              >
-                {isAllSelected ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-
-            {isExpanded && (
-              <div className="divide-y divide-[rgb(var(--color-border))]">
-                {perms.map((p) => (
-                  <label
-                    key={p.value}
-                    className="flex items-start gap-3 p-3 pl-10 hover:bg-[rgb(var(--color-background))]/50 cursor-pointer transition-colors group"
-                  >
-                    <div className="relative flex items-center mt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(p.value)}
-                        onChange={() => togglePerm(p.value)}
-                        className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] checked:border-[rgb(var(--color-primary))] checked:bg-[rgb(var(--color-primary))] focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:ring-offset-1 transition-all"
-                      />
-                      <CheckCircle
-                        size={10}
-                        className="pointer-events-none absolute left-0.5 top-0.5 text-white opacity-0 peer-checked:opacity-100"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium text-[rgb(var(--color-text))] group-hover:text-[rgb(var(--color-primary))] transition-colors">
-                        {p.label}
-                      </span>
-                      {p.description && (
-                        <p className="text-xs text-[rgb(var(--color-text-muted))] mt-0.5">
-                          {p.description}
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+  return Array.from(new Set(ids));
 };
+
+import ModernPermissionsSelector from '../../common/ModernPermissionsSelector';
+
 const SuperAdminUsers = ({
   users = [],
   roles: rolesProp = [],
@@ -215,15 +93,32 @@ const SuperAdminUsers = ({
   onRefresh,
   activeFilters: activeFiltersProp,
   setActiveFilters: setActiveFiltersProp,
-  ...paginationProps
 }) => {
   const { preferences } = usePreference();
   const [viewMode, setViewMode] = useState('list');
-  const { t } = useTranslation('users');
   const router = useRouter();
-  const { startImpersonation, user: currentUser } = useAuth(); // Added currentUser
+  const sidebarState =
+    typeof window !== 'undefined' ? localStorage.getItem('sidebar-collapsed') : 'false';
+  const isSidebarCollapsed = sidebarState === 'true';
+
+  const { user: currentUser, startImpersonation } = useAuth();
+  const canCreate = canCreateUsers(currentUser);
+  const canEdit = canEditUsers(currentUser);
+  const canDelete = canDeleteUsers(currentUser);
+  const canImpersonateUser = canImpersonate(currentUser);
+  const canManage2FA = hasPermission(currentUser, 'users.2fa');
+
   const searchParams = useSearchParams();
-  const highlightId = searchParams.get('highlight');
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
+
+  // Initialize mutations for suspend and restore
+  const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
+  const suspendUserMutation = useSuspendUser();
+  const restoreUserMutation = useRestoreUser();
+  const enable2faMutation = useEnable2FA();
+  const disable2faMutation = useDisable2FA();
+
   const [openActionMenu, setOpenActionMenu] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
@@ -231,8 +126,12 @@ const SuperAdminUsers = ({
 
   // Filter state
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [recentlyChangedUsers, setRecentlyChangedUsers] = useState({});
 
   // Always use props if available, fallback to local for safety during transition
+  // Base keys for persistence
+  const USER_FILTERS_KEY = 'super_admin_users_filters';
+
   const activeFilters = useMemo(
     () =>
       activeFiltersProp || {
@@ -244,7 +143,10 @@ const SuperAdminUsers = ({
       },
     [activeFiltersProp]
   );
-  const setActiveFilters = setActiveFiltersProp || (() => {});
+
+  const setActiveFilters = (filters) => {
+    if (setActiveFiltersProp) setActiveFiltersProp(filters);
+  };
 
   // Temporary filters for the drawer
   const [tempFilters, setTempFilters] = useState(activeFilters);
@@ -278,7 +180,10 @@ const SuperAdminUsers = ({
     }
 
     const formatted = (Array.isArray(rolesProp) ? rolesProp : [])
-      .filter((r) => !(r.name || '').toLowerCase().includes('super'))
+      .filter((r) => {
+        const name = (r.name || '').toLowerCase();
+        return !name.includes('super') && name !== 'admin';
+      })
       .map((r) => {
         const defaults = [];
         if (Array.isArray(r.permissions)) {
@@ -293,9 +198,7 @@ const SuperAdminUsers = ({
           });
         }
         return {
-          label: t(`roles.${(r.name || '').toLowerCase().replace(/ /g, '_')}`, {
-            defaultValue: r.name,
-          }),
+          label: r.name,
           value: r.id,
           code: r.name,
           default_permissions: defaults,
@@ -303,7 +206,7 @@ const SuperAdminUsers = ({
       });
 
     return [...formatted];
-  }, [rolesProp, permissionsProp, t]);
+  }, [rolesProp, permissionsProp]);
 
   const dealerships = useMemo(() => {
     if (!Array.isArray(dealershipsProp)) return [];
@@ -311,9 +214,21 @@ const SuperAdminUsers = ({
   }, [dealershipsProp]);
 
   const allUsers = useMemo(() => {
-    return (Array.isArray(users) ? users : [])
+    const propUsersArray = Array.isArray(users) ? users : [];
+
+    // Combine prop users with recently changed users not in props
+    const combinedUsers = [...propUsersArray];
+    const propIds = new Set(propUsersArray.map((u) => u.id));
+
+    Object.values(recentlyChangedUsers).forEach((u) => {
+      if (!propIds.has(u.id)) {
+        combinedUsers.push(u);
+      }
+    });
+
+    return combinedUsers
       .filter((u) => {
-        const roleName = u.role?.name || u.role;
+        const roleName = (u.role?.name || u.role?.code || u.role || '').toLowerCase();
         return roleName !== 'super_admin';
       })
       .map((u) => {
@@ -368,7 +283,12 @@ const SuperAdminUsers = ({
           roleId: roleId,
           work: safeWork,
           dealershipId: dealershipId,
-          status: (u.is_active !== undefined ? u.is_active : u.isActive) ? 'active' : 'inactive',
+          status:
+            u.status?.toLowerCase() === 'suspended'
+              ? 'suspended'
+              : (u.is_active !== undefined ? u.is_active : u.isActive)
+                ? 'active'
+                : 'inactive',
           permissions:
             u.permissions && u.permissions.length > 0
               ? u.permissions.map((p) => (typeof p === 'string' ? p : p.id))
@@ -378,30 +298,48 @@ const SuperAdminUsers = ({
           original_data: u,
         };
       });
-  }, [users, roles]);
+  }, [users, roles, recentlyChangedUsers]);
 
   const filteredUsers = useMemo(() => {
     return allUsers.filter((user) => {
-      if (
-        activeFilters.name &&
-        !(user.name || '').toLowerCase().includes((activeFilters.name || '').toLowerCase())
-      ) {
-        return false;
+      if (activeFilters.name) {
+        const lowerSearch = activeFilters.name.toLowerCase();
+        const matchesSearch =
+          (user.name || '').toLowerCase().includes(lowerSearch) ||
+          (user.email || '').toLowerCase().includes(lowerSearch) ||
+          (user.role || '').toLowerCase().includes(lowerSearch) ||
+          (user.work || '').toLowerCase().includes(lowerSearch);
+
+        if (!matchesSearch) return false;
       }
 
       if (activeFilters.roles.length > 0 && !activeFilters.roles.includes(user.roleId)) {
         return false;
       }
 
-      if (activeFilters.statuses.length > 0 && !activeFilters.statuses.includes(user.status)) {
+      // Exclude suspended users by default from User Management list
+      // Only show them if explicitly filtering for suspended status
+      if (
+        user.status === 'suspended' &&
+        (!activeFilters.statuses || activeFilters.statuses.length === 0)
+      ) {
         return false;
       }
 
-      if (
-        activeFilters.dealership &&
-        String(user.dealership?.id || user.dealership_id || '') !== String(activeFilters.dealership)
-      ) {
-        return false;
+      if (activeFilters.statuses.length > 0 && !activeFilters.statuses.includes(user.status)) {
+        // If the user was recently changed locally, keep them in the view
+        if (!recentlyChangedUsers[user.id]) {
+          return false;
+        }
+      }
+
+      if (activeFilters.dealership) {
+        const userDealers = Array.isArray(user.dealershipId)
+          ? user.dealershipId
+          : [user.dealershipId];
+        if (!userDealers.some((d) => d && String(d) === String(activeFilters.dealership))) {
+          return false;
+        }
       }
 
       if (activeFilters.tags && activeFilters.tags.length > 0) {
@@ -413,7 +351,7 @@ const SuperAdminUsers = ({
 
       return true;
     });
-  }, [allUsers, activeFilters]);
+  }, [allUsers, activeFilters, recentlyChangedUsers]);
 
   const userTagOptions = useMemo(() => {
     const tagsMap = new Map();
@@ -438,23 +376,6 @@ const SuperAdminUsers = ({
     return count;
   }, [activeFilters]);
 
-  // Stats Calculation
-  const stats = useMemo(() => {
-    const total = allUsers.length;
-    const active = allUsers.filter((u) => u.status === 'active').length;
-    const suspended = allUsers.filter((u) => u.status === 'suspended').length;
-
-    // Calculate new users (created in last 7 days) - Mock logic if created_at missing, or use real
-    // Assuming mock for now or reliable field
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const newUsers = allUsers.filter(
-      (u) => new Date(u.created_at || Date.now()) > oneWeekAgo
-    ).length;
-
-    return { total, active, suspended, newUsers };
-  }, [allUsers]);
-
   useEffect(() => {
     const handleClickOutside = () => setOpenActionMenu(null);
     window.addEventListener('click', handleClickOutside);
@@ -471,6 +392,14 @@ const SuperAdminUsers = ({
       tags: undefined,
     };
 
+    // Clean up empty passwords on edit so we don't send empty strings to API
+    if (!payload.password) {
+      delete payload.password;
+    }
+    if (!payload.confirmPassword) {
+      delete payload.confirmPassword;
+    }
+
     // Ensure status is formatted correctly for API (Title Case) and sync is_active
     if (payload.status) {
       const lowerStatus = payload.status.toLowerCase();
@@ -478,17 +407,26 @@ const SuperAdminUsers = ({
       payload.is_active = lowerStatus === 'active';
     }
 
-    // Handle plural dealership assignment
-    if (payload.dealership_id && Array.isArray(payload.dealership_id)) {
-      // Send plural to backend as dealership_ids to preserve all selections
-      payload.dealership_ids = payload.dealership_id;
-      // Sync singular dealership_id for backward compatibility (primary dealership)
-      payload.dealership_id = payload.dealership_id.length > 0 ? payload.dealership_id[0] : null;
+    // Handle dealership assignment (wrapped in array for API and providing dealership_id)
+    if (payload.dealerships && payload.dealerships.length > 0) {
+      const dealershipId = Array.isArray(payload.dealerships)
+        ? payload.dealerships[0]
+        : payload.dealerships;
+      payload.dealership_id = dealershipId;
+      payload.dealerships = Array.isArray(payload.dealerships)
+        ? payload.dealerships
+        : [dealershipId];
+    } else if (payload.dealership_id) {
+      // Also handle if they named it dealership_id by mistake
+      payload.dealerships = [payload.dealership_id];
+    } else {
+      payload.dealerships = [];
+      payload.dealership_id = null;
     }
 
     if (payload.role_id) {
       const r = (Array.isArray(roles) ? roles : []).find((item) => item.value === payload.role_id);
-      if (r && (r.code === 'user' || r.code === 'admin')) {
+      if (r && r.code === 'user') {
         payload.dealership_id = null;
         payload.dealership_id = [];
       }
@@ -521,7 +459,7 @@ const SuperAdminUsers = ({
 
       if (editingUser) {
         console.log('Updating user with payload:', finalPayload);
-        await userService.updateUser(editingUser.id, finalPayload);
+        await updateUserMutation.mutateAsync({ id: editingUser.id, data: finalPayload });
 
         // Sync Tags
         if (data.tags) {
@@ -538,16 +476,8 @@ const SuperAdminUsers = ({
             });
           }
         }
-
-        Swal.fire({
-          icon: 'success',
-          title: t('messages.userUpdated'),
-          text: t('messages.detailsUpdated'),
-          timer: 1500,
-          showConfirmButton: false,
-        });
       } else {
-        const newUser = await userService.createUser(finalPayload);
+        const newUser = await createUserMutation.mutateAsync(finalPayload);
 
         // Sync Tags (newUser might be the response object or data)
         const newUserId = newUser?.id || newUser?.data?.id;
@@ -566,14 +496,6 @@ const SuperAdminUsers = ({
             });
           }
         }
-
-        Swal.fire({
-          icon: 'success',
-          title: t('messages.userCreated'),
-          text: t('messages.newAdded'),
-          timer: 1500,
-          showConfirmButton: false,
-        });
       }
       setViewMode('list');
       setEditingUser(null);
@@ -588,54 +510,135 @@ const SuperAdminUsers = ({
   const handleAction = async (action, user) => {
     setOpenActionMenu(null);
 
+    // Defense-in-depth: Validate restrictions again before proceeding
+    const targetRole = normalizeRole(user?.role);
+    const isSupportRole = targetRole === 'support_staff' || targetRole === 'staff';
+    const isSellerRole = targetRole === 'user' || targetRole === 'seller';
+
+    if (action === 'edit' && (isSupportRole || isSellerRole)) {
+      Swal.fire(
+        'Restricted',
+        `Super Admins cannot edit ${isSupportRole ? 'Support' : 'Seller'} roles directly.`,
+        'warning'
+      );
+      return;
+    }
+
+    if (action === 'impersonate' && (isSupportRole || isSellerRole)) {
+      Swal.fire(
+        'Restricted',
+        'Impersonation is not allowed for Support or Seller roles.',
+        'warning'
+      );
+      return;
+    }
+
+    if ((action === 'enable2fa' || action === 'disable2fa' || action === '2fa') && isSellerRole) {
+      Swal.fire('Restricted', 'Super Admins cannot manage 2FA for Seller roles.', 'warning');
+      return;
+    }
+
     if (action === 'suspend') {
       const isSuspended = user.status === 'suspended';
-      Swal.fire({
-        title: isSuspended ? t('messages.activateUser') : t('messages.suspendUser'),
-        text: isSuspended
-          ? t('messages.confirmActivate', { name: user.name })
-          : t('messages.confirmSuspend', { name: user.name }),
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: isSuspended ? '#10B981' : '#d33',
-        confirmButtonText: isSuspended ? t('activate') : t('suspend'),
-      }).then(async (result) => {
-        // Async here
-        if (result.isConfirmed) {
+
+      if (isSuspended) {
+        // For activation, use the existing flow
+        Swal.fire({
+          title: 'Activate User',
+          text: `Are you sure you want to activate ${user.name}?`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#10B981',
+          confirmButtonText: 'Activate',
+        }).then(async (result) => {
+          if (result.isConfirmed) {
+            try {
+              await restoreUserMutation.mutateAsync(user.id);
+
+              // Update local cache for changed users
+              const updatedUser = {
+                ...user,
+                status: 'active',
+                is_active: true,
+                isActive: true,
+              };
+              setRecentlyChangedUsers((prev) => ({
+                ...prev,
+                [user.id]: updatedUser,
+              }));
+
+              onRefresh?.();
+              Swal.fire('Success', 'User has been activated.', 'success');
+            } catch (e) {
+              Swal.fire('Error', e?.response?.data?.message || 'Action failed', 'error');
+            }
+          }
+        });
+      } else {
+        // For suspension, show input for reason
+        const { value: reason } = await Swal.fire({
+          title: 'Suspend User',
+          text: `Are you sure you want to suspend ${user.name}?`,
+          input: 'textarea',
+          inputLabel: 'Suspension Reason',
+          inputPlaceholder: 'Enter the reason for suspension...',
+          inputAttributes: {
+            'aria-label': 'Enter the reason for suspension',
+          },
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Suspend',
+          inputValidator: (value) => {
+            if (!value || !value.trim()) {
+              return 'You need to provide a reason for suspension';
+            }
+          },
+        });
+
+        if (reason) {
           try {
-            const statusToSet = isSuspended ? true : false;
-            await userService.updateUser(user.id, { is_active: statusToSet });
+            await suspendUserMutation.mutateAsync({ userId: user.id, reason });
+
+            // Update local cache for changed users
+            const updatedUser = {
+              ...user,
+              status: 'suspended',
+              is_active: false,
+              isActive: false,
+            };
+            setRecentlyChangedUsers((prev) => ({
+              ...prev,
+              [user.id]: updatedUser,
+            }));
+
             onRefresh?.();
-            Swal.fire(
-              isSuspended ? t('messages.processed') : t('messages.processed'),
-              '',
-              'success'
-            );
+            Swal.fire('Success', 'User has been suspended.', 'success');
           } catch (e) {
             Swal.fire('Error', e?.response?.data?.message || 'Action failed', 'error');
           }
         }
-      });
+      }
     } else if (action === 'password') {
       const { value: formValues } = await Swal.fire({
-        title: t('messages.resetPasswordTitle'),
+        title: 'Reset Password',
         html: `
                     <div style="text-align: left;">
-                        <p style="margin-bottom: 15px;">${t('messages.resetPasswordInstr', { name: user.name })}</p>
+                        <p style="margin-bottom: 15px;">Setting a new password for <strong>${user.name}</strong>.</p>
                         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                             <input type="radio" id="auto" name="resetType" value="auto" checked onchange="
                                 document.getElementById('custom-pass-container').style.display = 'none';
                             ">
-                            <label for="auto">${t('messages.autoGenerate')}</label>
+                            <label for="auto">Auto-generate password</label>
                             
                             <input type="radio" id="custom" name="resetType" value="custom" onchange="
                                 document.getElementById('custom-pass-container').style.display = 'block';
                             ">
-                            <label for="custom">${t('messages.setManually')}</label>
+                            <label for="custom">Set manually</label>
                         </div>
                         <div id="custom-pass-container" style="display: none;">
                             <div style="position: relative; display: flex; align-items: center;">
-                                <input id="swal-new-password" type="password" class="swal2-input" placeholder="${t('form.password')}" style="margin: 0; width: 100%; padding-right: 40px;">
+                                <input id="swal-new-password" type="password" class="swal2-input" placeholder="New Password" style="margin: 0; width: 100%; padding-right: 40px;">
                                 <span id="toggle-password-visibility" style="position: absolute; right: 10px; cursor: pointer; color: #6b7280; display: flex; align-items: center;">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
@@ -646,15 +649,16 @@ const SuperAdminUsers = ({
                     </div>
                 `,
         showCancelButton: true,
-        confirmButtonText: t('resetPassword'),
+        confirmButtonText: 'Reset Password',
         focusConfirm: false,
         preConfirm: () => {
           const type = document.querySelector('input[name="resetType"]:checked').value;
           const newPassword = document.getElementById('swal-new-password').value;
 
           if (type === 'custom') {
-            if (!newPassword) Swal.showValidationMessage(t('validation.passwordRequired'));
-            if (newPassword.length < 6) Swal.showValidationMessage(t('validation.passwordMin'));
+            if (!newPassword) Swal.showValidationMessage('Password is required');
+            if (newPassword.length < 6)
+              Swal.showValidationMessage('Password must be at least 6 characters');
             return { autoGenerate: false, newPassword };
           }
           return { autoGenerate: true };
@@ -685,19 +689,19 @@ const SuperAdminUsers = ({
 
           if (formValues.autoGenerate && result.temporaryPassword) {
             await Swal.fire({
-              title: t('messages.resetSuccessTitle'),
+              title: 'Password Reset Success',
               html: `
-                                <p>${t('messages.resetSuccessBody')}</p>
+                                <p>The user's password has been reset successfully.</p>
                                 <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                                    <p style="margin: 0; font-size: 0.9em; color: #6b7280;">${t('messages.tempPassword')}</p>
+                                    <p style="margin: 0; font-size: 0.9em; color: #6b7280;">Temporary Password</p>
                                     <p style="margin: 5px 0 0 0; font-family: monospace; font-size: 1.2em; font-weight: bold; letter-spacing: 1px;">${result.temporaryPassword}</p>
                                 </div>
-                                <p style="font-size: 0.9em;">${t('messages.emailSent')}</p>
+                                <p style="font-size: 0.9em;">An email has been sent to the user.</p>
                             `,
               icon: 'success',
             });
           } else {
-            Swal.fire(t('messages.success'), t('messages.emailSent'), 'success');
+            Swal.fire('Success', 'An email has been sent to the user.', 'success');
           }
         } catch (error) {
           console.error('Reset error:', error);
@@ -710,18 +714,18 @@ const SuperAdminUsers = ({
       }
     } else if (action === 'delete') {
       Swal.fire({
-        title: t('delete'),
-        text: t('messages.confirmDelete'),
+        title: 'Delete User',
+        text: 'Are you sure you want to delete this user? This action cannot be undone.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#d33',
-        confirmButtonText: t('messages.yesDelete'),
+        confirmButtonText: 'Yes, Delete',
       }).then(async (result) => {
         if (result.isConfirmed) {
           try {
             await userService.deleteUser(user.id);
             onRefresh?.();
-            Swal.fire(t('messages.userDeleted'), t('messages.deletedSuccess'), 'success');
+            Swal.fire('Deleted!', 'User has been deleted successfully.', 'success');
           } catch (error) {
             Swal.fire('Error', error?.response?.data?.message || 'Failed to delete user.', 'error');
           }
@@ -744,7 +748,11 @@ const SuperAdminUsers = ({
         // fullUser might be wrapped in a data property depending on API response structure
         const userData = fullUser.data || fullUser;
 
-        setEditingUser({ ...userData, tags });
+        const permission_ids = normalizePermissionIds(
+          userData.permission_ids || userData.permissions || userData.user_permissions
+        );
+
+        setEditingUser({ ...userData, permission_ids, tags });
       } catch (error) {
         console.error('Failed to fetch user details', error);
         // Fallback to list data if fetch fails, but warn
@@ -763,6 +771,29 @@ const SuperAdminUsers = ({
       } catch (error) {
         // Error handled in startImpersonation
       }
+    } else if (action === 'enable2fa' || action === 'disable2fa') {
+      const isEnable = action === 'enable2fa';
+      Swal.fire({
+        title: isEnable ? 'Enable 2FA' : 'Disable 2FA',
+        text: `Are you sure you want to ${isEnable ? 'enable' : 'disable'} 2FA for ${user.name}?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: isEnable ? '#10B981' : '#d33',
+        confirmButtonText: `Yes, ${isEnable ? 'Enable' : 'Disable'}`,
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          try {
+            if (isEnable) {
+              await enable2faMutation.mutateAsync(user.id);
+            } else {
+              await disable2faMutation.mutateAsync(user.id);
+            }
+            onRefresh?.();
+          } catch (e) {
+            // Error handled by hook
+          }
+        }
+      });
     }
   };
 
@@ -799,10 +830,28 @@ const SuperAdminUsers = ({
           }
 
           onRefresh?.();
+
+          setRecentlyChangedUsers((prev) => {
+            const next = { ...prev };
+            const statusToSet = action === 'activate';
+            const statusLabel = action === 'activate' ? 'active' : 'suspended';
+
+            selectedUserIds.forEach((id) => {
+              const originalUser = allUsers.find((u) => u.id === id) || { id };
+              next[id] = {
+                ...originalUser,
+                status: statusLabel,
+                is_active: statusToSet,
+                isActive: statusToSet,
+              };
+            });
+            return next;
+          });
+
           setSelectedUserIds([]);
           Swal.fire(
-            t('messages.processed'),
-            t('messages.bulkProcessed', { count: selectedUserIds.length, action: action }),
+            'Success',
+            `${selectedUserIds.length} users have been processed successfully.`,
             'success'
           );
         } catch (error) {
@@ -822,53 +871,50 @@ const SuperAdminUsers = ({
       yup.object().shape({
         first_name: yup
           .string()
-          .required(t('validation.firstNameRequired'))
-          .matches(/^[A-Za-z\s'-]+$/, t('validation.nameInvalid')),
+          .required('First name is required')
+          .matches(/^[A-Za-z\s'-]+$/, 'Please enter a valid name'),
         last_name: yup
           .string()
-          .required(t('validation.lastNameRequired'))
-          .matches(/^[A-Za-z\s'-]+$/, t('validation.nameInvalid')),
+          .required('Last name is required')
+          .matches(/^[A-Za-z\s'-]+$/, 'Please enter a valid name'),
         email: yup
           .string()
-          .email(t('validation.emailInvalid'))
+          .email('Invalid email address')
           .matches(/^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/, 'Email must be lowercase and valid')
-          .required(t('validation.emailRequired')),
-        phone_number: yup
-          .string()
-          .required(t('validation.phoneRequired'))
-          .matches(/^[0-9]{10}$/, t('validation.phoneInvalid')),
-        role_id: yup.string().required(t('validation.roleRequired')),
-        dealership_id: yup.array().of(yup.string()).nullable(),
-        status: yup.string().required(t('validation.statusRequired')),
+          .required('Email is required'),
+        phone_number: yup.string().required('Phone number is required'),
+        role_id: yup.string().required('Role is required'),
+        dealerships: yup.mixed().nullable(),
+        status: yup.string().required('Status is required'),
         password: editingUser
           ? yup
               .string()
               .transform((curr) => (curr === '' ? null : curr))
               .nullable()
-              .min(6, t('validation.passwordMin'))
+              .min(6, 'Password must be at least 6 characters')
           : yup
               .string()
-              .required(t('validation.passwordRequired'))
-              .min(6, t('validation.passwordMin')),
+              .required('Password is required')
+              .min(6, 'Password must be at least 6 characters'),
         confirmPassword: editingUser
           ? yup
               .string()
               .transform((curr) => (curr === '' ? null : curr))
               .nullable()
-              .oneOf([yup.ref('password'), null], t('validation.passwordMatch'))
+              .oneOf([yup.ref('password'), null], 'Passwords do not match')
           : yup
               .string()
               .required('Confirm Password is required')
-              .oneOf([yup.ref('password'), null], t('validation.passwordMatch')),
+              .oneOf([yup.ref('password'), null], 'Passwords do not match'),
       }),
-    [editingUser, t]
+    [editingUser]
   );
 
   const fields = useMemo(
     () => [
       {
         type: 'section',
-        title: t('form.personalInfo'),
+        title: 'Personal Information',
         icon: User,
         fields: [
           {
@@ -876,9 +922,9 @@ const SuperAdminUsers = ({
             fields: [
               {
                 name: 'first_name',
-                label: t('form.firstName'),
+                label: 'First Name',
                 type: 'text',
-                placeholder: t('form.firstNamePlaceholder'),
+                placeholder: 'Enter first name',
                 required: true,
                 onChange: (value, { setValue }) => {
                   const clean = value.replace(/[^A-Za-z\s'-]/g, '');
@@ -887,9 +933,9 @@ const SuperAdminUsers = ({
               },
               {
                 name: 'last_name',
-                label: t('form.lastName'),
+                label: 'Last Name',
                 type: 'text',
-                placeholder: t('form.lastNamePlaceholder'),
+                placeholder: 'Enter last name',
                 required: true,
                 onChange: (value, { setValue }) => {
                   const clean = value.replace(/[^A-Za-z\s'-]/g, '');
@@ -903,20 +949,18 @@ const SuperAdminUsers = ({
             fields: [
               {
                 name: 'email',
-                label: t('form.email'),
+                label: 'Email Address',
                 type: 'email',
-                placeholder: t('form.emailPlaceholder'),
+                placeholder: 'Enter email address',
                 required: true,
               },
               {
                 name: 'phone_number',
-                label: t('form.phone'),
-                type: 'text',
-                placeholder: t('form.phonePlaceholder'),
-                onChange: (value, { setValue }) => {
-                  const clean = value.replace(/[^0-9]/g, '');
-                  if (clean !== value) setValue('phone_number', clean);
-                },
+                label: 'Phone Number',
+                type: 'custom',
+                component: PhoneInput,
+                props: { placeholder: 'Enter phone number', enableSearch: true },
+                required: true,
               },
             ],
           },
@@ -925,10 +969,10 @@ const SuperAdminUsers = ({
             fields: [
               {
                 name: 'tags',
-                label: t('form.tags', 'Tags'),
+                label: 'User Tags',
                 type: 'custom',
                 component: TagInput,
-                props: { type: 'user', placeholder: t('form.tagPlaceholder', 'Add user tags...') },
+                props: { type: 'user', placeholder: 'Add user tags...' },
                 className: 'col-span-2',
               },
             ],
@@ -937,7 +981,7 @@ const SuperAdminUsers = ({
       },
       {
         type: 'section',
-        title: t('form.roleAccess'),
+        title: 'Role & Access',
         icon: Shield,
         fields: [
           {
@@ -945,9 +989,20 @@ const SuperAdminUsers = ({
             fields: [
               {
                 name: 'role_id',
-                label: t('form.role'),
+                label: 'Account Role',
                 type: 'select',
-                options: roles,
+                options: roles.filter((r) => {
+                  const isRestricted = r.code === 'support_staff' || r.code === 'seller';
+                  if (isRestricted) {
+                    // Only show restricted roles if the user already has it (cannot assign to new users)
+                    const roleId = String(r.value);
+                    const currentRoleId = String(
+                      editingUser?.roleId || editingUser?.role_id || editingUser?.role?.id || ''
+                    );
+                    return currentRoleId === roleId;
+                  }
+                  return true;
+                }),
                 icon: User2,
                 required: true,
                 onChange: (value, { setValue }) => {
@@ -961,28 +1016,30 @@ const SuperAdminUsers = ({
               },
               {
                 name: 'status',
-                label: t('form.status', 'Status'),
+                label: 'Status',
                 type: 'select',
                 icon: LucideActivitySquare,
-                placeholder: t('form.selectStatus', 'Select Status'),
-                options: [
-                  { value: 'active', label: t('statuses.active') },
-                  { value: 'inactive', label: t('statuses.inactive') },
-                  { value: 'suspended', label: t('statuses.suspended') },
-                ],
+                placeholder: 'Select Status',
+                options: editingUser
+                  ? [
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
+                    ]
+                  : [{ value: 'active', label: 'Active' }],
                 required: true,
               },
             ],
           },
           {
-            name: 'dealership_id',
-            label: t('form.assignedDealership'),
+            name: 'dealerships',
+            label: 'Assigned Dealerships',
             type: 'custom',
             component: MultiSelect,
             props: {
               options: dealerships,
-              placeholder: t('form.selectDealership'),
+              placeholder: 'Select Dealerships...',
             },
+            icon: Building2,
             showIf: (values) => {
               const r = (Array.isArray(roles) ? roles : []).find(
                 (item) => item.value === values.role_id
@@ -998,51 +1055,66 @@ const SuperAdminUsers = ({
           },
           {
             name: 'permission_ids',
-            label: t('form.customPermissions'),
+            label: 'Custom Permissions',
             type: 'custom',
-            component: PermissionsAccordion,
-            props: { options: availablePermissions },
+            render: ({ value, onChange, getValues }) => {
+              const roleId = getValues('role_id');
+              const selectedRole = (Array.isArray(roles) ? roles : []).find(
+                (r) => String(r.value) === String(roleId)
+              );
+              return (
+                <ModernPermissionsSelector
+                  value={value}
+                  onChange={onChange}
+                  options={availablePermissions}
+                  roleName={selectedRole?.code || 'user'}
+                />
+              );
+            },
           },
         ],
       },
       {
         type: 'section',
-        title: t('form.security'),
+        title: 'Security Settings',
         icon: Lock,
+        showIf: () => !editingUser,
         fields: [
           {
             type: 'row',
             fields: [
               {
                 name: 'password',
-                label: t('form.password'),
+                label: 'Password',
                 type: 'password',
                 placeholder: '••••••••',
                 required: !editingUser, // Required only on create
+                showIf: () => !editingUser,
               },
               {
                 name: 'confirmPassword',
-                label: t('form.confirmPassword'),
+                label: 'Confirm Password',
                 type: 'password',
                 placeholder: '••••••••',
                 required: !editingUser,
+                showIf: () => !editingUser,
               },
             ],
           },
         ],
       },
     ],
-    [roles, dealerships, availablePermissions, editingUser, t]
+    [roles, dealerships, availablePermissions, editingUser]
   );
 
   if (viewMode === 'form') {
     return (
       <GenericFormPage
-        title={editingUser?.id ? t('form.editTitle') : t('form.createTitle')}
+        title={editingUser?.id ? 'Edit User' : 'Add New User'}
         subtitle={
           editingUser?.id
-            ? t('form.editSubtitle', { name: editingUser.name })
-            : t('form.createSubtitle')
+            ? `Updating details for ${editingUser.name}`
+            : 'Create a new account for the platform.'
         }
         initialData={{
           id: editingUser?.id,
@@ -1076,23 +1148,22 @@ const SuperAdminUsers = ({
                 editingUser?.status || (editingUser?.is_active ? 'active' : 'inactive')
               ).toLowerCase()
             : '',
-          dealership_id: (() => {
-            const dIds =
-              editingUser?.dealership_id ||
-              editingUser?.dealershipIds ||
-              editingUser?.assigned_dealerships;
-            if (Array.isArray(dIds) && dIds.length > 0) {
-              return dIds.map((d) => (typeof d === 'object' ? String(d.id || d.value) : String(d)));
+          dealerships: (() => {
+            const dList = editingUser?.dealerships || editingUser?.assigned_dealerships || [];
+            if (Array.isArray(dList) && dList.length > 0) {
+              return dList.map((d) =>
+                typeof d === 'object' ? String(d.id || d.value) : String(d)
+              );
             }
-
-            // Fallback to single ID if plural not available
             const singleId =
               editingUser?.dealership_id ||
               editingUser?.dealershipId ||
               editingUser?.dealership?.id;
-            return singleId && singleId !== '' ? [String(singleId)] : [];
+            return singleId ? [String(singleId)] : [];
           })(),
-          permission_ids: editingUser?.permissions || editingUser?.user_permissions || [],
+          permission_ids: normalizePermissionIds(
+            editingUser?.permission_ids || editingUser?.permissions || editingUser?.user_permissions
+          ),
           tags: editingUser?.tags || [],
           password: '',
           confirmPassword: '',
@@ -1110,185 +1181,180 @@ const SuperAdminUsers = ({
   }
 
   return (
-    <div className="space-y-6 animate-fade-in p-4 pb-20">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">User Management</h1>
-          <p className="text-[rgb(var(--color-text-muted))] text-sm mt-1">
-            Manage system access, roles, and permissions across all dealerships.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      <PageHeader
+        title="User Management"
+        subtitle="Manage and oversee all platform users."
+        actions={
           <button
-            onClick={() => {
-              setEditingUser(null);
-              setViewMode('form');
-            }}
-            className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-5 py-2.5 rounded-xl hover:bg-[rgb(var(--color-primary-dark))] transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            onClick={() => canCreate && (setEditingUser(null), setViewMode('form'))}
+            disabled={!canCreate}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all shadow-lg ${
+              canCreate
+                ? 'bg-[rgb(var(--color-primary))] text-white hover:bg-[rgb(var(--color-primary-dark))]'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+            title={canCreate ? 'Add New User' : "You don't have permission to create users."}
           >
-            <UserPlus size={20} />
-            <span className="font-semibold">Add New User</span>
+            <UserPlus size={18} />
+            <span>Add New User</span>
           </button>
-        </div>
-      </div>
-
-      {/* Stats Widgets */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatWidget
-          title="Total Users"
-          value={stats.total}
-          icon={Users}
-          color="bg-blue-500"
-          trend={{ label: 'Total registered', positive: true }}
-        />
-        <StatWidget
-          title="Active Users"
-          value={stats.active}
-          icon={UserCheck}
-          color="bg-emerald-500"
-          trend={{ label: 'Currently active', positive: true }}
-        />
-        <StatWidget
-          title="New This Week"
-          value={stats.newUsers}
-          icon={UserPlus}
-          color="bg-amber-500"
-          trend={{ label: 'Last 7 days', positive: true }}
-        />
-        <StatWidget
-          title="Suspended"
-          value={stats.suspended}
-          icon={UserX}
-          color="bg-red-500"
-          trend={{ label: 'Action required', positive: false }}
-        />
-      </div>
+        }
+      />
 
       {loading ? (
-        <div className="bg-[rgb(var(--color-surface))] rounded-3xl p-6 shadow-sm border border-[rgb(var(--color-border))]">
+        <div className="p-6 overflow-hidden">
           <SkeletonTable rows={5} />
         </div>
       ) : (
-        <div className="bg-[rgb(var(--color-surface))] rounded-3xl shadow-sm border border-[rgb(var(--color-border))] overflow-hidden">
-          <DataTable
-            onFilterClick={() => setIsFilterDrawerOpen(true)}
-            onClearFilters={() => {
-              setActiveFilters({ name: '', roles: [], statuses: [], dealership: '', tags: [] });
-              setTempFilters({ name: '', roles: [], statuses: [], dealership: '', tags: [] });
-            }}
-            showClearFilter={Object.values(activeFilters).some((v) =>
-              Array.isArray(v) ? v.length > 0 : v !== ''
-            )}
-            data={filteredUsers}
-            searchKeys={['name', 'email', 'work']}
-            highlightId={highlightId}
-            manualFiltering={true} // Ensure server-side data is displayed directly
-            columns={[
-              { header: t('table.name'), accessor: 'name', sortable: true, className: 'font-bold' },
-              {
-                header: t('table.email'),
-                accessor: 'email',
-                className: 'text-[rgb(var(--color-text-muted))]',
+        <DataTable
+          externalFilters={activeFilters}
+          onFilterClick={() => setIsFilterDrawerOpen(true)}
+          onClearFilters={() => {
+            const empty = { name: '', roles: [], statuses: [], dealership: '', tags: [] };
+            setActiveFilters(empty);
+            setTempFilters(empty);
+          }}
+          onRemoveExternalFilter={(key) => {
+            setActiveFilters((prev) => ({
+              ...prev,
+              [key]: Array.isArray(prev[key]) ? [] : '',
+            }));
+          }}
+          showClearFilter={Object.values(activeFilters).some((v) =>
+            Array.isArray(v) ? v.length > 0 : v !== ''
+          )}
+          manualFiltering={true}
+          searchValue={activeFilters.name}
+          onSearchChange={(val) => setActiveFilters({ ...activeFilters, name: val })}
+          data={filteredUsers}
+          searchKeys={['name', 'email', 'role', 'work']}
+          searchPlaceholder="Search users by name, email, dealership, or role..."
+          highlightId={highlightId}
+          filterOptions={[
+            { key: 'roles', label: 'Roles', options: roles },
+            {
+              key: 'statuses',
+              label: 'Status',
+              options: [
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ],
+            },
+            { key: 'dealership', label: 'Dealership', options: dealerships },
+            {
+              key: 'tags',
+              label: 'Tags',
+              options: (userTagOptions || []).map((t) => ({ value: t.id, label: t.name })),
+            },
+          ]}
+          hideFilterDropdowns={true}
+          columns={[
+            { header: 'Full Name', accessor: 'name', sortable: true, className: 'font-bold' },
+            {
+              header: 'Email Address',
+              accessor: 'email',
+              sortable: true,
+              className: 'text-[rgb(var(--color-text-muted))]',
+            },
+            {
+              header: 'Primary Role',
+              type: 'badge',
+              accessor: 'role',
+              sortable: true,
+              config: {
+                purple: ['seller'],
+                blue: ['dealer manager', 'manager'],
+                orange: ['staff', 'support staff'],
               },
-              {
-                header: t('table.role'),
-                type: 'badge',
-                accessor: 'role',
-                config: {
-                  purple: ['admin'],
-                  blue: ['dealer manager', 'manager'],
-                  orange: ['staff', 'support staff'],
-                },
+            },
+            {
+              header: 'Account Tags',
+              sortKey: (row) => row.tags?.length || 0,
+              accessor: (row) => <TagList tags={row.tags || []} limit={2} />,
+              className: 'min-w-[150px]',
+              sortable: true,
+            },
+            // {header: 'Work', accessor: 'work' },
+            {
+              header: 'Status',
+              type: 'badge',
+              accessor: 'status',
+              config: {
+                green: ['Active'],
+                orange: ['Suspended'],
+                red: ['Inactive'],
               },
-              {
-                header: t('table.tags', 'Tags'),
-                accessor: (row) => <TagList tags={row.tags || []} limit={2} />,
-                className: 'min-w-[150px]',
-              },
-              // {header: 'Work', accessor: 'work' },
-              {
-                header: t('table.status'),
-                type: 'badge',
-                accessor: 'status',
-                config: {
-                  green: ['Active'],
-                  gray: ['Inactive'],
-                  red: ['Suspended'],
-                },
-              },
-              {
-                header: t('table.actions'),
-                className: 'text-center',
-                accessor: (row) => (
-                  <div className="relative flex justify-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Convert DOMRect to plain object to ensure properties are preserved in state
-                        const domRect = e.currentTarget.getBoundingClientRect();
-                        const rect = {
-                          top: domRect.top,
-                          bottom: domRect.bottom,
-                          left: domRect.left,
-                          right: domRect.right,
-                          width: domRect.width,
-                          height: domRect.height,
-                          mouseX: e.clientX,
-                          mouseY: e.clientY,
-                        };
+            },
+            {
+              header: 'Actions',
+              className: 'text-center',
+              accessor: (row) => (
+                <div className="relative flex justify-center">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Convert DOMRect to plain object to ensure properties are preserved in state
+                      const domRect = e.currentTarget.getBoundingClientRect();
+                      const rect = {
+                        top: domRect.top,
+                        bottom: domRect.bottom,
+                        left: domRect.left,
+                        right: domRect.right,
+                        width: domRect.width,
+                        height: domRect.height,
+                        mouseX: e.clientX,
+                        mouseY: e.clientY,
+                      };
 
-                        // Manual positioning with overflow handling
-                        // w-48 is 192px. Align right edge of menu with right edge of trigger.
-                        let position = { top: rect.bottom + 4, left: rect.right - 192 };
+                      // Manual positioning with overflow handling
+                      // w-48 is 192px. Align right edge of menu with right edge of trigger.
+                      let position = { top: rect.bottom + 4, left: rect.right - 192 };
 
-                        // Check if menu fits below (assuming ~300px height for safety)
-                        const spaceBelow = window.innerHeight - rect.bottom;
-                        if (spaceBelow < 300) {
-                          // Flip to top - Anchor to bottom of menu to top of button
-                          // bottom = distance from viewport bottom to button top - 8px padding (aggressive overlap)
-                          const bottom = window.innerHeight - rect.top - 8;
-                          position = { bottom, left: rect.right - 192 };
-                        }
+                      // Check if menu fits below (assuming ~300px height for safety)
+                      const spaceBelow = window.innerHeight - rect.bottom;
+                      if (spaceBelow < 300) {
+                        // Flip to top - Anchor to bottom of menu to top of button
+                        // bottom = distance from viewport bottom to button top - 8px padding (aggressive overlap)
+                        const bottom = window.innerHeight - rect.top - 8;
+                        position = { bottom, left: rect.right - 192 };
+                      }
 
-                        if (openActionMenu?.id === row.id) {
-                          setOpenActionMenu(null);
-                        } else {
-                          setOpenActionMenu({
-                            id: row.id,
-                            position,
-                            align: 'end',
-                          });
-                        }
-                      }}
-                      className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-primary))] text-[rgb(var(--color-text))] ' : 'text-[rgba(var(--color-text-muted))] hover:bg-[rgba(var(--color-primary))] hover:text-[rgb(var(--color-text))] '}`}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                  </div>
-                ),
-              },
-            ]}
-            loading={loading}
-            itemsPerPage={preferences.items_per_page || 10}
-            searchPlaceholder="Search users by name, email, or role..."
-            onSelectionChange={handleSelectionChange}
-            selectedIds={selectedUserIds}
-          />
-        </div>
+                      if (openActionMenu?.id === row.id) {
+                        setOpenActionMenu(null);
+                      } else {
+                        setOpenActionMenu({
+                          id: row.id,
+                          position,
+                          align: 'end',
+                        });
+                      }
+                    }}
+                    className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-primary))] text-[rgb(var(--color-text))] ' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-text))] '}`}
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+          loading={loading}
+          itemsPerPage={preferences.items_per_page || 10}
+          onSelectionChange={handleSelectionChange}
+          selectedIds={selectedUserIds}
+          persistenceKey="super-admin-users"
+        />
       )}
 
       {selectedUserIds.length > 0 && (
         <div className="fixed bottom-0 left-0 lg:left-[280px] right-0 bg-[rgb(var(--color-surface))] border-t border-[rgb(var(--color-border))] p-4 md:p-6 z-50 shadow-xl">
-          <div className="flex flex-col md:flex-row items-center justify-between md:justify-center gap-4 md:gap-8 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between md:justify-center gap-4 md:gap-8 max-w-[1600px] mx-auto">
             <span className="text-base font-medium text-[rgb(var(--color-text))] whitespace-nowrap">
               <span className="font-bold text-[rgb(var(--color-primary))] text-lg">
                 {selectedUserIds.length}
               </span>{' '}
               <span className="hidden sm:inline">
-                {t('table.selected', { count: '' })
-                  .replace(selectedUserIds.length, '')
-                  .replace(' ', '')}
+                User{selectedUserIds.length !== 1 ? 's' : ''} Selected
               </span>
             </span>
 
@@ -1298,23 +1364,23 @@ const SuperAdminUsers = ({
               <button
                 onClick={() => handleBulkAction('activate')}
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[rgb(var(--color-success))]/10 text-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/20 transition-colors font-medium text-sm whitespace-nowrap border border-[rgb(var(--color-success))]/20"
-                title={t('activate')}
+                title="Activate"
               >
-                <CheckCircle size={18} /> {t('activate')}
+                <CheckCircle size={18} /> Activate
               </button>
               <button
                 onClick={() => handleBulkAction('suspend')}
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[rgb(var(--color-warning))]/10 text-[rgb(var(--color-warning))] hover:bg-[rgb(var(--color-warning))]/20 transition-colors font-medium text-sm whitespace-nowrap border border-[rgb(var(--color-warning))]/20"
-                title={t('suspend')}
+                title="Suspend"
               >
-                <Ban size={18} /> {t('suspend')}
+                <Ban size={18} /> Suspend
               </button>
               <button
                 onClick={() => handleBulkAction('delete')}
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[rgb(var(--color-error))]/10 text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/20 transition-colors font-medium text-sm whitespace-nowrap border border-[rgb(var(--color-error))]/20"
-                title={t('delete')}
+                title="Delete"
               >
-                <Trash2 size={18} /> {t('delete')}
+                <Trash2 size={18} /> Delete
               </button>
             </div>
 
@@ -1324,7 +1390,7 @@ const SuperAdminUsers = ({
               onClick={() => setSelectedUserIds([])}
               className="text-sm font-semibold text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors w-full md:w-auto text-center"
             >
-              {t('table.cancelSelection')}
+              {'Cancel Selection'}
             </button>
           </div>
         </div>
@@ -1337,68 +1403,122 @@ const SuperAdminUsers = ({
           position={openActionMenu.position}
           align={openActionMenu.align || 'end'}
         >
-          <button
-            onClick={() =>
-              handleAction(
-                'view',
-                (Array.isArray(allUsers) ? allUsers : []).find((u) => u.id === openActionMenu.id)
-              )
-            }
-            className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
-          >
-            <Eye size={14} /> {t('view')}
-          </button>
-          <button
-            onClick={() =>
-              handleAction(
-                'edit',
-                (Array.isArray(allUsers) ? allUsers : []).find((u) => u.id === openActionMenu.id)
-              )
-            }
-            className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
-          >
-            <Edit size={14} /> {t('edit')}
-          </button>
-          <button
-            onClick={() =>
-              handleAction(
-                'password',
-                (Array.isArray(allUsers) ? allUsers : []).find((u) => u.id === openActionMenu.id)
-              )
-            }
-            className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
-          >
-            <KeyRound size={14} /> {t('resetPassword')}
-          </button>
-          {openActionMenu &&
-            (() => {
-              const selectedUser = (Array.isArray(allUsers) ? allUsers : []).find(
-                (u) => u.id === openActionMenu.id
-              );
-              const isOtherAdmin = selectedUser?.role?.toLowerCase().includes('admin');
-              if (!isOtherAdmin) {
-                return (
+          {(() => {
+            const selectedUser = (Array.isArray(allUsers) ? allUsers : []).find(
+              (u) => u.id === openActionMenu.id
+            );
+            if (!selectedUser) return null;
+
+            const targetRole = normalizeRole(selectedUser.role);
+            const isSupportRole = targetRole === 'support_staff' || targetRole === 'staff';
+            const isSellerRole = targetRole === 'user' || targetRole === 'seller';
+            const isSelf = selectedUser.id === currentUser?.id;
+            const isSuspended = selectedUser.status === 'suspended';
+            const is2faEnabled =
+              selectedUser.two_factor_auth ||
+              selectedUser.two_factor_enabled ||
+              selectedUser.twoFactorEnabled;
+
+            // Super Admin permission restrictions
+            const canEditThisUser = canEdit && !isSupportRole && !isSellerRole;
+            const canImpersonateThisUser =
+              canImpersonateUser && !isSupportRole && !isSellerRole && !isSelf;
+
+            return (
+              <>
+                <button
+                  onClick={() => handleAction('view', selectedUser)}
+                  className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+                >
+                  <Eye size={14} /> View Details
+                </button>
+
+                {canEditThisUser && (
+                  <button
+                    onClick={() => handleAction('edit', selectedUser)}
+                    className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2 transition-colors"
+                  >
+                    <Edit size={14} /> Edit User
+                  </button>
+                )}
+
+                <button
+                  onClick={() => handleAction('password', selectedUser)}
+                  className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+                >
+                  <KeyRound size={14} /> Reset Password
+                </button>
+
+                {!isSellerRole && (
+                  <button
+                    onClick={() =>
+                      canManage2FA &&
+                      handleAction(is2faEnabled ? 'disable2fa' : 'enable2fa', selectedUser)
+                    }
+                    disabled={!canManage2FA}
+                    className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                      canManage2FA
+                        ? 'text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))]'
+                        : 'text-gray-400 cursor-not-allowed opacity-50'
+                    }`}
+                    title={!canManage2FA ? "You don't have permission to manage 2FA." : ''}
+                  >
+                    <ShieldCheck
+                      size={14}
+                      className={is2faEnabled ? 'text-emerald-500' : 'text-gray-400'}
+                    />
+                    {is2faEnabled ? 'Disable 2FA' : 'Enable 2FA'}
+                  </button>
+                )}
+
+                {canImpersonateThisUser && (
                   <button
                     onClick={() => handleAction('impersonate', selectedUser)}
-                    className="w-full text-left px-4 py-2 text-sm text-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary))]/5 flex items-center gap-2"
+                    className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors text-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary))]/5"
                   >
-                    <Fingerprint size={14} /> {t('impersonate')}
+                    <Fingerprint size={14} /> Impersonate User
                   </button>
-                );
-              }
-              return null;
-            })()}
+                )}
+
+                <button
+                  onClick={() => handleAction('suspend', selectedUser)}
+                  className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                    isSuspended
+                      ? 'text-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/5'
+                      : 'text-[rgb(var(--color-warning))] hover:bg-[rgb(var(--color-warning))]/5'
+                  }`}
+                >
+                  {isSuspended ? (
+                    <>
+                      <CheckCircle size={14} /> Activate User
+                    </>
+                  ) : (
+                    <>
+                      <Ban size={14} /> Suspend User
+                    </>
+                  )}
+                </button>
+              </>
+            );
+          })()}
           <div className="h-px bg-[rgb(var(--color-border))] my-1"></div>
           <button
             onClick={() =>
+              canDelete &&
               handleAction(
                 'delete',
                 (Array.isArray(allUsers) ? allUsers : []).find((u) => u.id === openActionMenu.id)
               )
             }
-            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+            disabled={!canDelete}
+            className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+              canDelete
+                ? 'text-red-600 hover:bg-red-50'
+                : 'text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+            title={!canDelete ? "You don't have permission to delete users." : ''}
           >
-            <Trash2 size={14} /> {t('delete')}
+            <Trash2 size={14} /> Delete User
           </button>
         </ActionMenuPortal>
       )}
@@ -1422,7 +1542,7 @@ const SuperAdminUsers = ({
           setTempFilters(emptyFilters);
           setActiveFilters(emptyFilters);
         }}
-        title={t('filters.title')}
+        title="User Filters"
       >
         <UserFilterContent
           activeFilters={tempFilters}

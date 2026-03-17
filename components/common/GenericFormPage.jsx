@@ -1,11 +1,11 @@
 'use client';
 import React, { useEffect } from 'react';
+import Image from 'next/image';
 import { useForm, useWatch, Controller, FormProvider } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { Save, ArrowLeft, X, Eye, EyeOff } from 'lucide-react';
+import { Save, ArrowLeft, X, Eye, EyeOff, ChevronDown } from 'lucide-react';
 import Input from './Input';
-import Image from 'next/image';
-import { useTranslation } from '@/context/LanguageContext';
+import CustomSelect from './CustomSelect';
 
 const FileInputField = ({ field, register, setValue, watch, error }) => {
   const [preview, setPreview] = React.useState(null);
@@ -35,7 +35,7 @@ const FileInputField = ({ field, register, setValue, watch, error }) => {
     }
   };
 
-  const currentAvatar = preview || `https://ui-avatars.com/api/?name=User&background=random`; // Fallback
+  const currentAvatar = preview || field.placeholder || '/assets/avatar-placeholder.png'; // Fallback
 
   return (
     <div className="mb-6">
@@ -54,7 +54,7 @@ const FileInputField = ({ field, register, setValue, watch, error }) => {
             src={currentAvatar}
             alt="Preview"
             fill
-            className="object-cover transition-opacity group-hover:opacity-75"
+            className={`transition-opacity group-hover:opacity-75 ${field.placeholder && !preview ? 'object-contain p-2' : 'object-cover'}`}
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
         </div>
@@ -94,8 +94,16 @@ const FileInputField = ({ field, register, setValue, watch, error }) => {
   );
 };
 
-const FieldRenderer = ({ field, control, register, errors, watch, setValue, getValues }) => {
-  const { t } = useTranslation('common');
+const FieldRenderer = ({
+  field,
+  control,
+  register,
+  errors,
+  watch,
+  setValue,
+  getValues,
+  onValuesChange,
+}) => {
   const values = useWatch({ control });
   const [showPassword, setShowPassword] = React.useState(false);
   if (field.showIf && !field.showIf(values)) return null;
@@ -132,6 +140,7 @@ const FieldRenderer = ({ field, control, register, errors, watch, setValue, getV
               watch={watch}
               setValue={setValue}
               getValues={getValues}
+              onValuesChange={onValuesChange}
             />
           ))}
         </div>
@@ -162,6 +171,7 @@ const FieldRenderer = ({ field, control, register, errors, watch, setValue, getV
             watch={watch}
             setValue={setValue}
             getValues={getValues}
+            onValuesChange={onValuesChange}
           />
         ))}
       </div>
@@ -210,66 +220,6 @@ const FieldRenderer = ({ field, control, register, errors, watch, setValue, getV
             return null;
           }}
         />
-      </div>
-    );
-  }
-  if (field.type === 'select') {
-    const Icon = field.icon;
-    const registration = register(field.name);
-    return (
-      <div>
-        {field.label && (
-          <label className="block text-sm font-medium text-[rgb(var(--color-text))] mb-1.5">
-            {field.label}
-          </label>
-        )}
-        <div className="relative">
-          {Icon && (
-            <Icon
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))]"
-              size={18}
-            />
-          )}
-          <select
-            {...registration}
-            onChange={(e) => {
-              registration.onChange(e);
-              if (field.onChange) {
-                field.onChange(e.target.value, { setValue, getValues });
-              }
-            }}
-            className={`w-full ${Icon ? 'pl-10' : 'pl-4'} pr-10 py-2.5 sm:py-3 rounded-xl border ${error ? 'border-red-500' : 'border-[rgb(var(--color-border))]'} bg-[rgb(var(--color-surface))] focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all appearance-none text-sm sm:text-base text-[rgb(var(--color-text))] min-h-[44px] cursor-pointer`}
-            disabled={field.disabled}
-          >
-            <option value="" disabled>
-              {field.placeholder || `${t('form.select')} ${field.label || 'Option'}`}
-            </option>
-            {field.options?.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[rgb(var(--color-text-muted))]">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </div>
-        </div>
-        {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-        {field.helpText && (
-          <p className="text-xs text-[rgb(var(--color-text-muted))] mt-2">{field.helpText}</p>
-        )}
       </div>
     );
   }
@@ -340,6 +290,45 @@ const FieldRenderer = ({ field, control, register, errors, watch, setValue, getV
     );
   }
 
+  if (field.type === 'select') {
+    const Icon = field.icon;
+    return (
+      <div className={field.className || 'space-y-1.5'}>
+        {field.label && (
+          <label className="block text-sm font-medium text-[rgb(var(--color-text))] mb-1.5">
+            {field.label}
+          </label>
+        )}
+        <Controller
+          name={field.name}
+          control={control}
+          render={({ field: { value, onChange } }) => (
+            <CustomSelect
+              name={field.name}
+              options={field.options}
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                if (field.onChange) {
+                  field.onChange(e.target.value, { setValue, getValues });
+                }
+                if (onValuesChange) {
+                  onValuesChange(getValues());
+                }
+              }}
+              placeholder={field.placeholder || `Select ${field.label || '...'}`}
+              isDisabled={field.disabled}
+              error={!!error}
+              icon={Icon}
+              isSearchable={field.isSearchable}
+            />
+          )}
+        />
+        {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+      </div>
+    );
+  }
+
   const isPassword = field.type === 'password';
   const inputType = isPassword ? (showPassword ? 'text' : 'password') : field.type || 'text';
 
@@ -349,6 +338,11 @@ const FieldRenderer = ({ field, control, register, errors, watch, setValue, getV
     registration.onChange(e);
     if (field.onChange) {
       field.onChange(e.target.value, { setValue, getValues });
+    }
+    // Trigger onValuesChange callback if provided
+    if (onValuesChange) {
+      const allValues = getValues();
+      onValuesChange(allValues);
     }
   };
 
@@ -362,10 +356,12 @@ const FieldRenderer = ({ field, control, register, errors, watch, setValue, getV
       error={error}
       rightIcon={isPassword ? (showPassword ? EyeOff : Eye) : field.rightIcon}
       onRightIconClick={isPassword ? () => setShowPassword(!showPassword) : field.onRightIconClick}
+      autoComplete={isPassword ? 'new-password' : field.autoComplete || 'off'}
       name={registration.name}
       ref={registration.ref}
       onBlur={registration.onBlur}
       onChange={handleChange}
+      disabled={field.disabled}
       {...field.props}
     />
   );
@@ -381,6 +377,7 @@ export default function GenericFormPage({
   subtitle,
   iconClassName,
   saveLabel,
+  onValuesChange,
 }) {
   const isEditing = !!initialData?.id;
 
@@ -403,7 +400,7 @@ export default function GenericFormPage({
         } else if (field.name) {
           const value = getNestedValue(stableInitialData, field.name);
           defaults[field.name] =
-            value !== undefined
+            value !== undefined && value !== null
               ? value
               : field.defaultValue !== undefined
                 ? field.defaultValue
@@ -430,9 +427,8 @@ export default function GenericFormPage({
     setValue,
     getValues,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = methods;
-  const { t } = useTranslation('common');
 
   useEffect(() => {
     if (stableInitialData) {
@@ -440,87 +436,105 @@ export default function GenericFormPage({
     }
   }, [stableInitialData, reset, getDefaultValues]);
 
+  const handleFormSubmit = async (data) => {
+    try {
+      await onSave(data);
+      reset(data); // Reset isDirty state after successful save
+    } catch (error) {
+      console.error('Save error:', error);
+    }
+  };
+
   return (
     <FormProvider {...methods}>
       <div className="bg-[rgb(var(--color-surface))] rounded-2xl border border-[rgb(var(--color-border))] shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <div className="p-6 border-b border-[rgb(var(--color-border))] flex items-center justify-between sticky top-0 bg-[rgb(var(--color-surface))] z-10 transition-all">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onCancel}
-              className="p-2 hover:bg-[rgb(var(--color-background))] rounded-full transition-colors text-[rgb(var(--color-text-muted))]"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h2 className="text-xl font-bold text-[rgb(var(--color-text))]">
-                {title || (isEditing ? t('form.editTitle') : t('form.createTitle'))}
-              </h2>
-              <p className="text-sm text-[rgb(var(--color-text-muted))]">
-                {subtitle || (isEditing ? t('form.editSubtitle') : t('form.createSubtitle'))}
-              </p>
+        <form onSubmit={handleSubmit(handleFormSubmit)}>
+          <div className="p-6 border-b border-[rgb(var(--color-border))] flex items-center justify-between sticky top-0 bg-[rgb(var(--color-surface))] z-10 transition-all">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="p-2 hover:bg-[rgb(var(--color-background))] rounded-full transition-colors text-[rgb(var(--color-text-muted))]"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <h2 className="text-xl font-bold text-[rgb(var(--color-text))]">
+                  {title || (isEditing ? 'Edit Details' : 'Create New')}
+                </h2>
+                <p className="text-sm text-[rgb(var(--color-text-muted))]">
+                  {subtitle ||
+                    (isEditing
+                      ? 'Update the information below'
+                      : 'Enter the required details below')}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="px-6 md:px-8 pt-8 pb-16 max-w-7xl mx-auto">
-          <div
-            className={`grid grid-cols-1 ${fields.some((f) => f.type === 'column') ? 'lg:grid-cols-2' : ''} gap-10 mb-12`}
-          >
-            {fields.map((field, idx) => {
-              if (field.type === 'column') {
+          <div className="px-6 md:px-8 pt-8 pb-32 max-w-[1600px] mx-auto">
+            <div
+              className={`grid grid-cols-1 ${fields.some((f) => f.type === 'column') ? 'lg:grid-cols-2' : ''} gap-10 mb-12`}
+            >
+              {fields.map((field, idx) => {
+                if (field.type === 'column') {
+                  return (
+                    <div key={idx} className="space-y-10">
+                      {field.fields.map((subField, subIdx) => (
+                        <FieldRenderer
+                          key={subIdx}
+                          field={subField}
+                          control={control}
+                          register={register}
+                          errors={errors}
+                          watch={watch}
+                          setValue={setValue}
+                          getValues={getValues}
+                        />
+                      ))}
+                    </div>
+                  );
+                }
+
                 return (
-                  <div key={idx} className="space-y-10">
-                    {field.fields.map((subField, subIdx) => (
-                      <FieldRenderer
-                        key={subIdx}
-                        field={subField}
-                        control={control}
-                        register={register}
-                        errors={errors}
-                        watch={watch}
-                        setValue={setValue}
-                        getValues={getValues}
-                      />
-                    ))}
-                  </div>
+                  <FieldRenderer
+                    key={idx}
+                    field={field}
+                    control={control}
+                    register={register}
+                    errors={errors}
+                    watch={watch}
+                    setValue={setValue}
+                    getValues={getValues}
+                    onValuesChange={onValuesChange}
+                  />
                 );
-              }
-
-              return (
-                <FieldRenderer
-                  key={idx}
-                  field={field}
-                  control={control}
-                  register={register}
-                  errors={errors}
-                  watch={watch}
-                  setValue={setValue}
-                  getValues={getValues}
-                />
-              );
-            })}
+              })}
+            </div>
           </div>
 
-          <div className="mt-20 pt-10 border-t border-[rgb(var(--color-border))] flex items-center justify-end gap-4">
+          <div className="p-6 border-t border-[rgb(var(--color-border))] flex items-center justify-end gap-4 sticky bottom-0 bg-[rgb(var(--color-surface))] z-10">
             <button
               type="button"
               onClick={onCancel}
-              className="px-6 py-2.5 text-sm font-bold text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-xl transition-all h-11"
+              className="px-6 py-2.5 text-sm font-medium text-[rgb(var(--color-text-muted))] bg-[rgb(var(--color-background))] hover:bg-[rgb(var(--color-background))]/80 rounded-xl transition-colors border border-[rgb(var(--color-border))]"
             >
-              {t('form.cancel')}
+              Cancel
             </button>
             <button
-              onClick={handleSubmit(onSave, (errors) =>
-                console.error('Form Validation Errors:', errors)
-              )}
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-8 py-2.5 text-sm font-bold text-white bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-dark))] rounded-xl shadow-lg shadow-[rgb(var(--color-primary))/0.2] transition-all disabled:opacity-50 disabled:cursor-not-allowed group h-11"
+              type="submit"
+              disabled={isSubmitting || (isEditing && !isDirty)}
+              className="flex items-center gap-2 px-6 py-2.5 bg-[rgb(var(--color-primary))] text-white font-bold rounded-xl hover:bg-[rgb(var(--color-primary-dark))] shadow-[rgb(var(--color-primary)/0.2)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
-              <Save size={18} className="group-hover:scale-110 transition-transform" />
-              <span>{isSubmitting ? t('form.saving') : saveLabel || t('form.save')}</span>
+              {isSubmitting ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save size={18} />
+              )}
+              {saveLabel || 'Save Changes'}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </FormProvider>
   );

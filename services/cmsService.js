@@ -3,10 +3,41 @@ import axios from 'axios';
 
 const ENDPOINT = '/cms/cms-contents';
 
+const PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+
 const publicApi = axios.create({
-  baseURL: '/api', // Local network backend
+  baseURL: PUBLIC_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 });
+
+const normalizeSingleContent = (raw, contentType) => {
+  const data = raw?.data ?? raw;
+
+  if (!data) return null;
+
+  if (Array.isArray(data)) {
+    const first = data[0];
+    return first ? normalizeSingleContent(first, contentType) : null;
+  }
+
+  if (Array.isArray(data?.contents)) {
+    const first = data.contents[0];
+    return first ? normalizeSingleContent(first, contentType) : null;
+  }
+
+  if (Array.isArray(data?.items)) {
+    const first = data.items[0];
+    return first ? normalizeSingleContent(first, contentType) : null;
+  }
+
+  const item = data?.content ? data : data?.content?.content ? data.content : null;
+  if (!item) return null;
+
+  return {
+    ...item,
+    contentType: contentType || item.contentType || item.content_type,
+  };
+};
 
 const cmsService = {
   getAllContent: async () => {
@@ -39,6 +70,17 @@ const cmsService = {
 
       return [];
     }
+  },
+
+  // Public CMS (no auth required) - intended for login Terms/Privacy pages
+  getPublicContentBySlug: async (slug, contentType) => {
+    const response = await publicApi.get(`/cms/public/contents/slug/${slug}`);
+    return normalizeSingleContent(response.data, contentType);
+  },
+
+  getPublicContentByType: async (type) => {
+    const response = await publicApi.get(`/cms/public/contents/type/${type}`);
+    return normalizeSingleContent(response.data, type);
   },
 
   getContentById: async (id) => {
@@ -120,7 +162,7 @@ const cmsService = {
         contentType: 'terms',
         title: terms?.title || 'Terms of Service',
         content:
-          '<h1>Terms of Service</h1><p>Welcome to MotorQuote. By using our services, you agree to these terms.</p>',
+          '<h1>Terms of Service</h1><p>Welcome to the platform. By using our services, you agree to these terms.</p>',
         version: '1.0',
         isActive: false,
       };
@@ -128,6 +170,36 @@ const cmsService = {
     return {
       ...terms,
       contentType: 'terms', // Normalize for frontend
+    };
+  },
+
+  getTermsPublic: async () => {
+    try {
+      const termsByType = await cmsService.getPublicContentByType('terms');
+      if (termsByType?.content) {
+        return { ...termsByType, contentType: 'terms' };
+      }
+    } catch (error) {
+      console.warn('Failed to fetch public terms by type:', error);
+    }
+
+    try {
+      const termsBySlug = await cmsService.getPublicContentBySlug('terms-of-service', 'terms');
+      if (termsBySlug?.content) {
+        return { ...termsBySlug, contentType: 'terms' };
+      }
+    } catch (error) {
+      console.warn('Failed to fetch public terms by slug:', error);
+    }
+
+    return {
+      id: null,
+      contentType: 'terms',
+      title: 'Terms of Service',
+      content:
+        '<h1>Terms of Service</h1><p>Welcome to the platform. By using our services, you agree to these terms.</p>',
+      version: '1.0',
+      isActive: false,
     };
   },
 
@@ -168,6 +240,36 @@ const cmsService = {
     return {
       ...privacy,
       contentType: 'privacy',
+    };
+  },
+
+  getPrivacyPublic: async () => {
+    try {
+      const privacyByType = await cmsService.getPublicContentByType('privacy');
+      if (privacyByType?.content) {
+        return { ...privacyByType, contentType: 'privacy' };
+      }
+    } catch (error) {
+      console.warn('Failed to fetch public privacy by type:', error);
+    }
+
+    try {
+      const privacyBySlug = await cmsService.getPublicContentBySlug('privacy-policy', 'privacy');
+      if (privacyBySlug?.content) {
+        return { ...privacyBySlug, contentType: 'privacy' };
+      }
+    } catch (error) {
+      console.warn('Failed to fetch public privacy by slug:', error);
+    }
+
+    return {
+      id: null,
+      contentType: 'privacy',
+      title: 'Privacy Policy',
+      content:
+        '<h1>Privacy Policy</h1><p>Your privacy is important to us. This policy explains how we handle your data.</p>',
+      version: '1.0',
+      isActive: true,
     };
   },
 
@@ -320,7 +422,7 @@ const cmsService = {
   // --- API KEYS MANAGEMENT ---
   getApiKeys: async () => {
     try {
-      const response = await api.get('/api-keys');
+      const response = await api.get('/cms/api-keys');
       const data = response.data;
       if (Array.isArray(data)) return data;
       if (data && Array.isArray(data.keys)) return data.keys;
@@ -334,7 +436,7 @@ const cmsService = {
 
   getApiKeyById: async (id) => {
     try {
-      const response = await api.get(`/api-keys/${id}`);
+      const response = await api.get(`/cms/api-keys/${id}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching API key by ID:', error);
@@ -344,7 +446,7 @@ const cmsService = {
 
   createApiKey: async (data) => {
     try {
-      const response = await api.post('/api-keys', data);
+      const response = await api.post('/cms/api-keys', data);
       return response.data;
     } catch (error) {
       console.error('Error creating API key:', error);
@@ -354,7 +456,7 @@ const cmsService = {
 
   updateApiKey: async (id, data) => {
     try {
-      const response = await api.put(`/api-keys/${id}`, data);
+      const response = await api.put(`/cms/api-keys/${id}`, data);
       return response.data;
     } catch (error) {
       console.error('Error updating API key:', error);
@@ -364,7 +466,7 @@ const cmsService = {
 
   regenerateApiSecret: async (id) => {
     try {
-      const response = await api.post(`/api-keys/${id}/regenerate-secret`);
+      const response = await api.post(`/cms/api-keys/${id}/regenerate-secret`);
       return response.data;
     } catch (error) {
       console.error('Error regenerating API secret:', error);
@@ -374,7 +476,7 @@ const cmsService = {
 
   revokeApiKey: async (id) => {
     try {
-      const response = await api.delete(`/api-keys/${id}`);
+      const response = await api.delete(`/cms/api-keys/${id}`);
       return response.data;
     } catch (error) {
       console.error('Error revoking API key:', error);
