@@ -18,6 +18,10 @@ export default function DetailViewModal({
   showActivityTab = true,
   mode = 'modal', // 'modal' | 'drawer'
   maxWidth = 'max-w-5xl',
+  showAvatar = true,
+  showStatusBadge = true,
+  showJoinedDate = true,
+  joinedLabel = 'Joined',
 }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [mounted, setMounted] = useState(false);
@@ -87,23 +91,25 @@ export default function DetailViewModal({
           </button>
 
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
-            <div className="flex-shrink-0 w-24 h-24 rounded-2xl bg-gradient-to-br from-[rgb(var(--color-primary))] to-purple-100 p-0.5 shadow-lg shadow-purple-100/20 overflow-hidden">
-              <div className="w-full h-full bg-[rgb(var(--color-surface))] rounded-[14px] flex items-center justify-center overflow-hidden">
-                {data.profile_picture ? (
-                  <Image
-                    src={data.profile_picture}
-                    alt={displayName}
-                    width={96}
-                    height={96}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-3xl font-bold bg-gradient-to-br from-[rgb(var(--color-text))] to-[rgb(var(--color-text))] bg-clip-text text-transparent uppercase">
-                    {displayName.charAt(0)}
-                  </span>
-                )}
+            {showAvatar && (
+              <div className="flex-shrink-0 w-24 h-24 rounded-2xl bg-gradient-to-br from-[rgb(var(--color-primary))] to-purple-100 p-0.5 shadow-lg shadow-purple-100/20 overflow-hidden">
+                <div className="w-full h-full bg-[rgb(var(--color-surface))] rounded-[14px] flex items-center justify-center overflow-hidden">
+                  {data.profile_picture ? (
+                    <Image
+                      src={data.profile_picture}
+                      alt={displayName}
+                      width={96}
+                      height={96}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-3xl font-bold bg-gradient-to-br from-[rgb(var(--color-text))] to-[rgb(var(--color-text))] bg-clip-text text-transparent uppercase">
+                      {displayName.charAt(0)}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex-1 text-center md:text-left min-w-0 w-full">
               <div className="flex flex-col md:flex-row items-center md:items-start md:justify-between gap-4">
@@ -123,19 +129,23 @@ export default function DetailViewModal({
                 </div>
 
                 {/* Status Badge */}
-                <div
-                  className={`px-4 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider ${statusStyle}`}
-                >
-                  {data.status || 'Unknown'}
-                </div>
+                {showStatusBadge && (
+                  <div
+                    className={`px-4 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider ${statusStyle}`}
+                  >
+                    {data.status || 'Unknown'}
+                  </div>
+                )}
               </div>
 
               {/* Tags */}
-              <div className="mt-4 flex flex-wrap gap-2 justify-center md:justify-start">
-                <span className="px-2.5 py-1 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg text-xs text-[rgb(var(--color-text-muted))] flex items-center gap-1.5">
-                  <Calendar size={12} /> Joined {joinedDate}
-                </span>
-              </div>
+              {showJoinedDate && (
+                <div className="mt-4 flex flex-wrap gap-2 justify-center md:justify-start">
+                  <span className="px-2.5 py-1 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg text-xs text-[rgb(var(--color-text-muted))] flex items-center gap-1.5">
+                    <Calendar size={12} /> {joinedLabel} {joinedDate}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

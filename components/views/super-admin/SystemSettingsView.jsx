@@ -17,6 +17,7 @@ import {
   Trash2,
   Percent,
   Edit2,
+  X,
 } from 'lucide-react';
 import { SkeletonCard } from '../../common/Skeleton';
 import Swal from 'sweetalert2';
@@ -390,11 +391,18 @@ export default function SystemSettingsView() {
       placeholder: 'e.g., Base Dealer Fee',
     },
     {
+      name: 'parameter_key',
+      label: 'Parameter Key',
+      type: 'text',
+      placeholder: 'e.g., base_dealer_fee',
+      required: true,
+    },
+    {
       name: 'category',
       label: 'Category',
       type: 'select',
       options: [
-        { value: '', label: 'Select a category' },
+        { value: '', label: 'Select Category', disabled: true, hidden: true },
         ...categories.filter((c) => c !== 'All').map((cat) => ({ value: cat, label: cat })),
       ],
     },
@@ -414,6 +422,10 @@ export default function SystemSettingsView() {
 
   const validationSchema = yup.object().shape({
     parameter_name: yup.string().required('Parameter name is required'),
+    parameter_key: yup
+      .string()
+      .required('Parameter key is required')
+      .matches(/^[a-z0-9_]+$/, 'Key must be lowercase, numbers, and underscores only'),
     category: yup.string().required('Category is required'),
     parameter_value: yup.string().required('Parameter value is required'),
   });
@@ -493,8 +505,17 @@ export default function SystemSettingsView() {
                 placeholder="Search parameters..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl text-sm font-medium focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] focus:border-[rgb(var(--color-primary))] outline-none transition-all shadow-sm group-hover:shadow-md"
+                className="w-full pl-10 pr-10 py-2.5 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl text-sm font-medium focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] focus:border-[rgb(var(--color-primary))] outline-none transition-all shadow-sm group-hover:shadow-md"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] p-1 rounded-full hover:bg-[rgb(var(--color-background))] transition-colors focus:outline-none"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           </div>
 

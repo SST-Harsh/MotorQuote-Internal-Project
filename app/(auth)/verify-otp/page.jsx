@@ -8,12 +8,12 @@ import Cookies from 'js-cookie';
 
 import api from '../../../utils/api';
 import authService from '../../../services/authService';
-
-import LanguageSwitcher from '../../../components/common/LanguageSwitcher';
-import { useTranslation } from '../../../context/LanguageContext';
+import { useConfig } from '../../../context/ConfigContext';
+import Image from 'next/image';
 
 export default function VerifyOtpPage() {
-  const { t } = useTranslation('auth');
+  const { config } = useConfig();
+  const { branding } = config;
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [email, setEmail] = useState('');
   const inputRefs = useRef([]);
@@ -73,13 +73,13 @@ export default function VerifyOtpPage() {
 
       if (!tempToken) {
         console.error('No tempToken found in sessionStorage');
-        throw new Error(t('messages.unexpectedError'));
+        throw new Error('An unexpected error occurred. Please try again.');
       }
 
+      // Use authService for consistent API payload structure
       const data = await authService.verify2FA(tempToken, otpString);
 
-      const token = data.token || data.accessToken;
-      const user = data.user;
+      const { token, user } = data;
 
       if (token) {
         localStorage.setItem('authToken', token);
@@ -91,8 +91,8 @@ export default function VerifyOtpPage() {
         sessionStorage.removeItem('tempToken');
 
         Swal.fire({
-          title: t('verifyOtp.verified'),
-          text: t('verifyOtp.redirecting'),
+          title: 'Verified Successfully',
+          text: 'Redirecting to your dashboard...',
           icon: 'success',
           confirmButtonColor: 'rgb(var(--color-primary))',
           timer: 1500,
@@ -105,10 +105,13 @@ export default function VerifyOtpPage() {
       }
     } catch (error) {
       console.error('Verification Error:', error);
-      const message = error.response?.data?.message || error.message || t('verifyOtp.invalidCode');
+      const message =
+        error.response?.data?.message ||
+        error.message ||
+        'The verification code provided is invalid or has expired.';
 
       Swal.fire({
-        title: t('verifyOtp.failed'),
+        title: 'Verification Failed',
         text: message,
         icon: 'error',
         confirmButtonColor: 'rgb(var(--color-error))',
@@ -159,7 +162,7 @@ export default function VerifyOtpPage() {
   const handleResend = async () => {
     try {
       const tempToken = sessionStorage.getItem('tempToken');
-      if (!tempToken) throw new Error(t('messages.unexpectedError'));
+      if (!tempToken) throw new Error('An unexpected error occurred. Please try again.');
 
       await api.post(
         '/auth/send-login-otp',
@@ -173,7 +176,7 @@ export default function VerifyOtpPage() {
 
       Swal.fire({
         icon: 'success',
-        title: t('verifyOtp.codeResent'),
+        title: 'Code Resent Successfully',
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
@@ -182,8 +185,10 @@ export default function VerifyOtpPage() {
     } catch (error) {
       console.error('Resend Error:', error);
       Swal.fire({
-        title: t('verifyOtp.failed'),
-        text: error.response?.data?.message || t('verifyOtp.invalidCode'),
+        title: 'Failed to Resend',
+        text:
+          error.response?.data?.message ||
+          'The verification code provided is invalid or has expired.',
         icon: 'error',
         confirmButtonColor: 'rgb(var(--color-error))',
       });
@@ -192,32 +197,42 @@ export default function VerifyOtpPage() {
 
   return (
     <div className="flex min-h-screen bg-[#0B0F19] lg:bg-[rgb(var(--color-background))]">
-      {/* Floating Language Switcher */}
-      <div className="fixed top-6 right-6 z-50">
-        <LanguageSwitcher />
-      </div>
-
       <div className="hidden lg:flex lg:w-1/2 relative bg-[#0B0F19] text-white flex-col justify-between p-12 overflow-hidden">
         <div className="absolute inset-0 z-0 bg-gradient-to-br from-gray-900 via-[#111827] to-[rgb(var(--color-primary))] opacity-90"></div>
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-[rgb(var(--color-primary))] rounded-lg flex items-center justify-center font-bold">
-              M
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+              {branding.logoUrl ? (
+                <Image
+                  src={branding.logoUrl}
+                  alt={branding.appName}
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full bg-[rgb(var(--color-primary))] flex items-center justify-center font-bold text-white">
+                  {branding.appName.charAt(0)}
+                </div>
+              )}
             </div>
-            <span className="text-xl font-semibold tracking-wide">MotorQuote</span>
+            <span className="text-xl font-semibold tracking-wide">{branding.appName}</span>
           </div>
         </div>
 
         <div className="relative z-10 space-y-4 max-w-lg mb-20">
           <h1 className="text-4xl font-bold leading-tight">
-            {t('verifyOtp.heroTitle')} <br />
-            <span className="text-[rgb(var(--color-success))]">{t('verifyOtp.heroSubtitle')}</span>
+            Secure Verification <br />
+            <span className="text-[rgb(var(--color-success))]">Protect Your Account</span>
           </h1>
-          <p className="text-gray-400 text-lg leading-relaxed">{t('verifyOtp.heroDesc')}</p>
+          <p className="text-gray-400 text-lg leading-relaxed">
+            Enter the 6-digit verification code sent to your email to securely access your account
+            and verify your identity.
+          </p>
         </div>
 
         <div className="relative z-10 text-sm text-gray-500">
-          {t('login.allRightsReserved', { companyName: 'MotorQuote Ltd.' })}
+          © {new Date().getFullYear()} {branding.appName}. All rights reserved.
         </div>
       </div>
 
@@ -230,7 +245,7 @@ export default function VerifyOtpPage() {
             className="inline-flex items-center gap-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors mb-8"
           >
             <ArrowLeft size={16} />
-            {t('common.backToLogin')}
+            Back to Login
           </Link>
 
           <div className="text-center lg:text-left mb-8">
@@ -238,10 +253,10 @@ export default function VerifyOtpPage() {
               <ShieldCheck size={24} />
             </div>
             <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-              {t('verifyOtp.title')}
+              Verify Your Identity
             </h2>
             <p className="text-[rgb(var(--color-text-muted))] mt-2 text-sm">
-              {t('verifyOtp.subtitle')} <br className="lg:hidden" />
+              We&apos;ve sent a 6-digit code to <br className="lg:hidden" />
               <span className="font-semibold text-[rgb(var(--color-text))]">
                 {email || 'your email'}
               </span>
@@ -249,10 +264,10 @@ export default function VerifyOtpPage() {
 
             {timer > 0 ? (
               <p className="text-red-500 mt-2 text-sm font-medium animate-pulse">
-                {t('verifyOtp.expiresIn', { timer: timer.toString().padStart(2, '0') })}
+                Code expires in: {timer.toString().padStart(2, '0')}s
               </p>
             ) : (
-              <p className="text-red-500 mt-2 text-sm font-medium">{t('verifyOtp.expired')}</p>
+              <p className="text-red-500 mt-2 text-sm font-medium">Code has expired</p>
             )}
           </div>
 
@@ -286,18 +301,18 @@ export default function VerifyOtpPage() {
               className="w-full h-12 bg-[rgb(var(--color-primary))] text-white font-medium rounded-lg shadow-lg shadow-[rgb(var(--color-primary)/0.2)] 
                   hover:bg-[rgb(var(--color-primary-dark))] hover:shadow-[rgb(var(--color-primary)/0.4)] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('verifyOtp.submit')}
+              Verify & Proceed
             </button>
           </form>
 
           <p className="text-center text-sm text-[rgb(var(--color-text-muted))] mt-6">
-            {t('verifyOtp.resendCode')}?{' '}
+            Didn&apos;t receive a code?{' '}
             <button
               onClick={handleResend}
               className={`font-semibold transition-colors ${timer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-[rgb(var(--color-primary))] hover:underline'}`}
               disabled={timer > 0}
             >
-              {timer > 0 ? t('verifyOtp.resendIn', { timer }) : t('verifyOtp.resend')}
+              {timer > 0 ? `Resend in ${timer}s` : 'Resend Code'}
             </button>
           </p>
         </div>

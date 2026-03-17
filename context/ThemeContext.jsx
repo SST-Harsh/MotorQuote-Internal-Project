@@ -1,23 +1,48 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
+import { usePreference } from './PreferenceContext';
+import { usePathname } from 'next/navigation';
 
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
+  const { preferences, updatePreference } = usePreference();
   const [theme, setTheme] = useState('light');
+  const pathname = usePathname();
 
+  // Routes that should ALWAYS be light theme
+  const isAuthRoute =
+    pathname === '/' ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/forgot-password') ||
+    pathname.startsWith('/verify-otp') ||
+    pathname.startsWith('/reset-password');
+
+  // Initialize theme from preferences when they load
   useEffect(() => {
-    const storedTheme = localStorage.getItem('theme') || 'light';
-    setTheme(storedTheme);
+    if (isAuthRoute) {
+      setTheme('light');
+      document.documentElement.setAttribute('data-theme', 'light');
+      return;
+    }
 
-    document.documentElement.setAttribute('data-theme', storedTheme);
-  }, []);
+    if (preferences?.theme) {
+      const currentTheme = preferences.theme;
+      setTheme(currentTheme);
+      document.documentElement.setAttribute('data-theme', currentTheme);
+    }
+  }, [preferences?.theme, isAuthRoute, pathname]);
 
-  const changeTheme = (newTheme) => {
+  const changeTheme = async (newTheme) => {
+    // Don't allow changing theme if we are on an auth route (though UI shouldn't allow it)
+    if (isAuthRoute) return;
+
     setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
+
+    // Sync with API/Global preferences
+    await updatePreference('theme', newTheme);
   };
 
   // Prepare context value

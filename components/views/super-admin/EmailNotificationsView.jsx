@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Filter, Send, Trash2, Edit, Activity, User, Eye } from 'lucide-react';
+import { Plus, Search, Filter, Send, Trash2, Edit, Activity, User, Eye, X } from 'lucide-react';
 import Link from 'next/link';
 import Swal from 'sweetalert2';
 import * as yup from 'yup';
@@ -172,8 +172,16 @@ const EmailNotificationsView = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name or subject..."
-            className="w-full pl-10 pr-4 py-2.5 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl focus:outline-none focus:border-[rgb(var(--color-primary))] text-sm transition-colors"
+            className="w-full pl-10 pr-10 py-2.5 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl focus:outline-none focus:border-[rgb(var(--color-primary))] text-sm transition-colors"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] p-0.5 rounded-full hover:bg-[rgb(var(--color-background))] transition-all"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -252,68 +260,78 @@ const EmailNotificationsView = () => {
           </div>
         )}
       </div>
-      {showSendModal && selectedTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="p-6 border-b border-[rgb(var(--color-border))]">
-              <h2 className="text-xl font-bold font-racing">
-                Send &quot;{selectedTemplate.name}&quot;
-              </h2>
-              <p className="text-xs text-[rgb(var(--color-text-muted))] mt-1">
-                Send a test email to yourself or another address.
-              </p>
-            </div>
+      {showSendModal &&
+        selectedTemplate &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowSendModal(false)}
+          >
+            <div
+              className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-[rgb(var(--color-border))]">
+                <h2 className="text-xl font-bold font-racing">
+                  Send &quot;{selectedTemplate.name}&quot;
+                </h2>
+                <p className="text-xs text-[rgb(var(--color-text-muted))] mt-1">
+                  Send a test email to yourself or another address.
+                </p>
+              </div>
 
-            <div className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
-                  Recipient Email
-                </label>
-                <input
-                  type="email"
-                  value={targetValue}
-                  onChange={(e) => setTargetValue(e.target.value)}
-                  placeholder="e.g. user@example.com"
-                  className={`w-full bg-[rgb(var(--color-background))] border rounded-lg px-4 py-2.5 text-sm focus:outline-none transition-colors ${validationErrors.email ? 'border-[rgb(var(--color-error))]' : 'border-[rgb(var(--color-border))] focus:border-[rgb(var(--color-primary))]'}`}
-                  autoFocus
-                />
-                {validationErrors.email && (
-                  <p className="text-red-500 text-[10px] mt-1 font-bold italic">
-                    {validationErrors.email}
-                  </p>
-                )}
+              <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
+                    Recipient Email
+                  </label>
+                  <input
+                    type="email"
+                    value={targetValue}
+                    onChange={(e) => setTargetValue(e.target.value)}
+                    placeholder="e.g. user@example.com"
+                    className={`w-full bg-[rgb(var(--color-background))] border rounded-lg px-4 py-2.5 text-sm focus:outline-none transition-colors ${validationErrors.email ? 'border-[rgb(var(--color-error))]' : 'border-[rgb(var(--color-border))] focus:border-[rgb(var(--color-primary))]'}`}
+                    autoFocus
+                  />
+                  {validationErrors.email && (
+                    <p className="text-red-500 text-[10px] mt-1 font-bold italic">
+                      {validationErrors.email}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))]/50 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowSendModal(false)}
+                  disabled={isSending}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmSend}
+                  disabled={isSending}
+                  className="px-6 py-2 rounded-lg text-sm font-bold text-white bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-dark))] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSending ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      Send Email
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-
-            <div className="p-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-background))]/50 flex justify-end gap-3">
-              <button
-                onClick={() => setShowSendModal(false)}
-                disabled={isSending}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))] transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmSend}
-                disabled={isSending}
-                className="px-6 py-2 rounded-lg text-sm font-bold text-white bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-dark))] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {isSending ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} />
-                    Send Email
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {showPreviewModal &&
         selectedTemplate &&

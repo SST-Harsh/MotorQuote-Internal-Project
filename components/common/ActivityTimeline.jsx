@@ -1,7 +1,5 @@
 import React from 'react';
 import Image from 'next/image';
-import { useTranslation, useLanguage } from '@/context/LanguageContext';
-import { formatTime, translateUserRole, translateUserName } from '@/utils/i18n';
 import {
   LogIn,
   LogOut,
@@ -16,6 +14,7 @@ import {
   Building,
   Activity,
   History,
+  MessageSquare,
 } from 'lucide-react';
 
 const AVATAR_GRADIENTS = [
@@ -32,9 +31,35 @@ const getAvatarGradient = (name = 'A') => {
   return AVATAR_GRADIENTS[charCode % AVATAR_GRADIENTS.length];
 };
 
-const getActivityConfig = (action = '', description = '') => {
+const getActivityConfig = (action = '', description = '', new_status = '') => {
   const act = String(action).toLowerCase();
   const desc = String(description).toLowerCase();
+  const status = String(new_status || '').toLowerCase();
+
+  // Prioritize status-based coloring if it's a status change
+  if (status) {
+    if (status === 'approved' || status === 'accepted')
+      return {
+        border: 'border-l-emerald-500',
+        icon: CheckCircle,
+        color: 'text-emerald-500',
+        bg: 'bg-emerald-50/50',
+      };
+    if (status === 'rejected' || status === 'declined')
+      return {
+        border: 'border-l-red-500',
+        icon: XCircle,
+        color: 'text-red-500',
+        bg: 'bg-red-50/50',
+      };
+    if (status === 'pending' || status === 'waiting')
+      return {
+        border: 'border-l-amber-500',
+        icon: RefreshCcw,
+        color: 'text-amber-500',
+        bg: 'bg-amber-50/50',
+      };
+  }
 
   if (act.includes('login') || desc.includes('login'))
     return {
@@ -49,6 +74,13 @@ const getActivityConfig = (action = '', description = '') => {
       icon: LogOut,
       color: 'text-gray-500',
       bg: 'bg-gray-50/50',
+    };
+  if (act.includes('ticket') || desc.includes('ticket'))
+    return {
+      border: 'border-l-indigo-500',
+      icon: MessageSquare,
+      color: 'text-indigo-500',
+      bg: 'bg-indigo-50/50',
     };
   if (act.includes('create dealership') || desc.includes('new dealership'))
     return {
@@ -75,19 +107,19 @@ const getActivityConfig = (action = '', description = '') => {
     };
   if (act.includes('approve'))
     return {
-      border: 'border-l-purple-500',
+      border: 'border-l-emerald-500',
       icon: CheckCircle,
-      color: 'text-purple-500',
-      bg: 'bg-purple-50/50',
+      color: 'text-emerald-500',
+      bg: 'bg-emerald-50/50',
     };
   if (act.includes('reject'))
-    return { border: 'border-l-red-600', icon: XCircle, color: 'text-red-600', bg: 'bg-red-50/50' };
-  if (act.includes('status'))
+    return { border: 'border-l-red-500', icon: XCircle, color: 'text-red-500', bg: 'bg-red-50/50' };
+  if (act.includes('status') || act.includes('change'))
     return {
-      border: 'border-l-cyan-500',
+      border: 'border-l-blue-400',
       icon: RefreshCcw,
-      color: 'text-cyan-500',
-      bg: 'bg-cyan-50/50',
+      color: 'text-blue-400',
+      bg: 'bg-blue-50/50',
     };
   if (act.includes('quote'))
     return {
@@ -105,42 +137,48 @@ const getActivityConfig = (action = '', description = '') => {
   };
 };
 
-const translateActivityDescription = (description, t) => {
-  if (!description) return t('activity.performedAction');
-  const desc = String(description).toLowerCase();
+const translateActivityDescription = (action) => {
+  if (!action) return 'Performed an action';
+  const desc = String(action).toLowerCase();
 
   if (desc.includes('attempted to log into the system') || desc.includes('login'))
-    return t('activity.loginAttempt');
-  if (desc.includes('logged out') || desc.includes('logout')) return t('activity.loggedOut');
-  if (desc.includes('created a new dealership')) return t('activity.dealershipCreated');
-  if (desc.includes('deleted a dealership')) return t('activity.dealershipDeleted');
-  if (desc.includes('created a new user account')) return t('activity.userCreated');
-  if (desc.includes('updated user information')) return t('activity.userUpdated');
+    return 'Login Attempt';
+  if (desc.includes('logged out') || desc.includes('logout')) return 'Logged Out';
+  if (desc.includes('created a new dealership')) return 'Dealership Created';
+  if (desc.includes('deleted a dealership')) return 'Dealership Deleted';
+  if (desc.includes('created a new user account')) return 'User Created';
+  if (desc.includes('updated user information')) return 'User Updated';
+  if (desc.includes('ticket')) return 'Ticket Created';
   if (
     desc.includes('created') ||
     desc.includes('new quote') ||
     desc.includes('submitted a new quote request')
   )
-    return t('activity.newQuote');
-  if (desc.includes('updated') || desc.includes('quote updated')) return t('activity.quoteUpdated');
-  if (desc.includes('approved') || desc.includes('quote approved'))
-    return t('activity.quoteApproved');
-  if (desc.includes('rejected') || desc.includes('quote rejected'))
-    return t('activity.quoteRejected');
-  if (desc.includes('status changed')) return t('activity.statusChanged');
+    return 'New Quote';
+  if (desc.includes('updated') || desc.includes('quote updated')) return 'Quote Updated';
+  if (desc.includes('approved') || desc.includes('quote approved')) return 'Quote Approved';
+  if (desc.includes('rejected') || desc.includes('quote rejected')) return 'Quote Rejected';
+  if (desc.includes('status changed') || desc.includes('status_changed')) return 'Status Changed';
 
-  return description;
+  return action;
 };
 
 const ActivityTimeline = ({ activities = [] }) => {
-  const { t: tDashboard, locale } = useTranslation('dashboard');
-  const { t: tCommon } = useLanguage();
-  const isRTL = locale === 'ar';
+  const isRTL = false; // Hardcoded to false as we are standardizing on English
 
   const sanitizeDescription = (desc, action, actionLabel) => {
     if (!desc) return null;
+
+    // If desc is an object, try to extract a string or return null to avoid [object Object]
+    if (typeof desc === 'object') {
+      if (desc.message && typeof desc.message === 'string') return desc.message;
+      if (desc.details && typeof desc.details === 'string') return desc.details;
+      return null;
+    }
+
     const str = String(desc).trim();
 
+    // Avoid JSON strings
     if (str.startsWith('{') && str.endsWith('}')) return null;
 
     const lowDesc = str.toLowerCase();
@@ -163,21 +201,37 @@ const ActivityTimeline = ({ activities = [] }) => {
     <div className="space-y-4">
       {activities.length > 0 ? (
         activities.slice(0, 5).map((activity, idx) => {
-          const config = getActivityConfig(activity.action, activity.description);
+          // Ensure description is a string before passing to config and sanitization
+          const processedDescription =
+            typeof activity.description === 'string'
+              ? activity.description
+              : typeof activity.details === 'string'
+                ? activity.details
+                : activity.metadata?.message || '';
+
+          const config = getActivityConfig(
+            activity.action,
+            processedDescription,
+            activity.new_status
+          );
           const Icon = config.icon;
 
           // Translate both action and description
-          const actionLabel = translateActivityDescription(activity.action, tDashboard);
+          const actionLabel = translateActivityDescription(activity.action);
           const rawDesc =
-            activity.description && activity.description !== activity.action
-              ? activity.description
+            processedDescription && processedDescription !== activity.action
+              ? processedDescription
               : null;
           const detailedDesc = sanitizeDescription(rawDesc, activity.action, actionLabel);
 
-          const translatedName = translateUserName(
-            activity.user_name || activity.user || 'Admin',
-            tCommon
-          );
+          const translatedName = activity.user_name || activity.user || 'Admin';
+          const rawRole =
+            activity.user_role ||
+            activity.userRole ||
+            activity.role ||
+            activity.role_name ||
+            activity.roleName;
+          const translatedRole = rawRole || '';
           const gradient = getAvatarGradient(translatedName);
           const borderPosition = isRTL ? 'border-r-4' : 'border-l-4';
           const rtlBorderClass = config.border.replace('border-l-', 'border-r-');
@@ -207,7 +261,7 @@ const ActivityTimeline = ({ activities = [] }) => {
                   <div
                     className={`w-12 h-12 rounded-full bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-lg font-bold shadow-md border-2 border-white/20`}
                   >
-                    {String(translatedName).charAt(0)}
+                    {String(translatedName).charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div
@@ -220,17 +274,35 @@ const ActivityTimeline = ({ activities = [] }) => {
               <div className="relative flex-1 min-w-0">
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex-1 truncate">
-                    <p className="text-[13px] font-bold text-[rgb(var(--color-text))] truncate">
-                      {translatedName}
-                    </p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-[13px] font-bold text-[rgb(var(--color-text))] truncate">
+                        {translatedName}
+                      </p>
+                      {translatedRole ? (
+                        <span className="text-[10px] font-bold text-[rgb(var(--color-text-muted))] bg-[rgb(var(--color-background))] px-2 py-0.5 rounded-full border border-[rgb(var(--color-border))] whitespace-nowrap">
+                          {translatedRole}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-[11px] font-semibold text-[rgb(var(--color-primary))] mt-0.5">
-                      {actionLabel}
+                      {actionLabel}{' '}
+                      {activity.new_status ? (
+                        <span className="text-[rgb(var(--color-text-muted))] ml-1">
+                          to{' '}
+                          <span className={`${config.color} font-bold uppercase`}>
+                            {activity.new_status}
+                          </span>
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                   <span className="text-[10px] font-medium text-[rgb(var(--color-text-muted))] whitespace-nowrap bg-[rgb(var(--color-background))] px-2 py-0.5 rounded-full border border-[rgb(var(--color-border))]">
                     {activity.timestamp
-                      ? formatTime(new Date(activity.timestamp))
-                      : tDashboard('systemStatus.justNow')}
+                      ? new Date(activity.timestamp).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Just Now'}
                   </span>
                 </div>
                 {detailedDesc && (
@@ -245,7 +317,7 @@ const ActivityTimeline = ({ activities = [] }) => {
       ) : (
         <div className="p-8 text-center flex flex-col items-center justify-center text-[rgb(var(--color-text-muted))] bg-[rgb(var(--color-background))/0.3] rounded-xl border border-dashed border-[rgb(var(--color-border))]">
           <History size={32} className="mb-3 opacity-20" />
-          <p className="text-xs font-medium">{tDashboard('noActivity')}</p>
+          <p className="text-xs font-medium">No activity recorded yet</p>
         </div>
       )}
     </div>

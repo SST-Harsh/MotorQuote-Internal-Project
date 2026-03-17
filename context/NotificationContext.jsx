@@ -1,22 +1,43 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from './AuthContext';
+import { usePreference } from './PreferenceContext';
 import notificationService from '@/services/notificationService';
+import { canViewNotifications } from '@/utils/roleUtils';
+import { useQuery } from '@tanstack/react-query';
 
 const NotificationContext = createContext();
 
 export function NotificationProvider({ children }) {
   const { user } = useAuth();
+  const { preferences } = usePreference();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
   const isLoadingRef = React.useRef(false);
+  // Stable ref for user — avoids loadNotifications being recreated on every user object mutation
+  const userRef = React.useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
-  const loadNotifications = useCallback(async () => {
-    if (!user) return;
+  const loadNotifications = useCallback(async (explicitUser = null) => {
+    const currentUser = explicitUser || userRef.current;
+    if (!currentUser) {
+      setIsLoading(false);
+      return;
+    }
 
-    if (isLoadingRef.current) {
+    // Permission check
+    if (!canViewNotifications(currentUser)) {
+      setNotifications([]);
+      setUnreadCount(0);
+      setIsLoading(false);
+      return;
+    }
+
+    if (isLoadingRef.current && !explicitUser) {
       return;
     }
 
@@ -37,7 +58,8 @@ export function NotificationProvider({ children }) {
         console.warn('Failed to fetch unread count, using fallback:', error);
         currentUnreadCount = 0;
       }
-      setUnreadCount(currentUnreadCount);
+      // Disable premature count setting from backend to avoid flicker with frontend filtering
+      // setUnreadCount(currentUnreadCount);
 
       let notificationsList = [];
       try {
@@ -61,30 +83,22 @@ export function NotificationProvider({ children }) {
         notificationsList = [];
       }
 
-      const userRole = user.role?.toLowerCase() || '';
-      const currentUserId = user?.id != null ? user.id.toString() : undefined;
+      const userRole = currentUser.role?.toLowerCase() || '';
+      const currentUserId = currentUser?.id != null ? currentUser.id.toString() : undefined;
 
       const filteredNotifications = notificationsList.filter((notification) => {
-        // Filter out draft/scheduled notifications that haven't been sent yet
+        // 1. Filter out draft/scheduled notifications
         const status = notification.status || 'active';
-        if (status === 'draft') {
-          console.log(`⏰ Skipping draft notification:`, notification.title);
-          return false;
-        }
+        if (status === 'draft') return false;
 
-        // Also filter out notifications scheduled for the future
         const scheduledAt = notification.scheduled_at || notification.scheduledAt;
-        if (scheduledAt) {
-          const scheduledTime = new Date(scheduledAt).getTime();
-          const currentTime = Date.now();
-          if (scheduledTime > currentTime) {
-            console.log(
-              `⏰ Skipping future scheduled notification (scheduled for ${new Date(scheduledAt).toLocaleString()}):`,
-              notification.title
-            );
-            return false;
-          }
-        }
+        // Add 1 minute grace period for client-server clock skew
+        if (scheduledAt && new Date(scheduledAt).getTime() > new Date().getTime() + 60000)
+          return false;
+
+        // 2. Expiration Check (applies to all)
+        const expiresAt = notification.expires_at || notification.expiresAt;
+        if (expiresAt && new Date(expiresAt) < new Date()) return false;
 
         const senderIdRaw =
           notification.created_by ??
@@ -92,73 +106,78 @@ export function NotificationProvider({ children }) {
           notification.senderId ??
           notification.sender?.id ??
           notification.creator_id;
-        const senderId = senderIdRaw != null ? senderIdRaw.toString() : undefined;
+        const senderId = senderIdRaw?.toString();
         const isSentByMe = currentUserId != null && senderId === currentUserId;
 
-        // Targeting Checks
+        // 3. Targeting Checks
         let isTargeted = false;
-
-        // 1. Individual targeting (highest priority)
         const targetUsers = notification.target_user_ids || notification.targetUserIds || [];
-        if (
+        const isIndividuallyTargeted =
           Array.isArray(targetUsers) &&
           currentUserId != null &&
-          targetUsers.some((id) => id?.toString() === currentUserId)
-        ) {
-          isTargeted = true;
-          console.log('✅ Targeted individually:', notification.title);
-        }
+          targetUsers.some((id) => id?.toString() === currentUserId);
 
-        // 2. Role-based targeting (target_roles takes priority over target_audience)
-        if (!isTargeted) {
+        if (isIndividuallyTargeted) {
+          isTargeted = true;
+        } else {
+          // 4. Role-based / Broadcast targeting
+
+          // a. Temporal filter for new users
+          const userCreatedAt = currentUser.created_at || currentUser.createdAt;
+          const notificationCreatedAt = notification.created_at || notification.createdAt;
+          if (userCreatedAt && notificationCreatedAt) {
+            const userCreationTime = new Date(userCreatedAt).getTime();
+            const notificationTime = new Date(notificationCreatedAt).getTime();
+            if (notificationTime < userCreationTime - 60000) return false;
+          }
+
+          // b. Audience/Role Matching
           const targetRoles = notification.target_roles || notification.targetRoles;
-          const targetAudience = (notification.target_audience || notification.targetAudience || '')
-            .toLowerCase()
-            .replace(/[_\s]/g, '');
           const normalizedUserRole = userRole.toLowerCase().replace(/[_\s]/g, '');
 
-          // Check target_roles (HIGHEST PRIORITY)
           if (Array.isArray(targetRoles) && targetRoles.length > 0) {
             const normalizedTargetRoles = targetRoles.map((r) =>
               r.toLowerCase().replace(/[_\s]/g, '')
             );
-
-            // DEBUG: Log role matching
-            console.log('🔍 Role Matching Debug:', {
-              notificationTitle: notification.title,
-              targetRoles: targetRoles,
-              normalizedTargetRoles: normalizedTargetRoles,
-              targetAudience: notification.target_audience || notification.targetAudience,
-              userRole: userRole,
-              normalizedUserRole: normalizedUserRole,
-            });
-
-            // If target_roles is set, it MUST match (ignore target_audience)
             if (
               normalizedTargetRoles.includes('all') ||
               normalizedTargetRoles.includes(normalizedUserRole)
             ) {
               isTargeted = true;
-              console.log(`✅ Role match:`, notification.title);
             } else {
-              // target_roles is set but doesn't match - REJECT IMMEDIATELY
-              console.log(`❌ Role mismatch - REJECTED:`, notification.title);
-              return false; // Explicit early return to filter out this notification
+              return false; // Specifically targeted at other roles
             }
           } else {
-            // No target_roles set - fall back to target_audience
+            const targetAudience = (
+              notification.target_audience ||
+              notification.targetAudience ||
+              ''
+            )
+              .toLowerCase()
+              .replace(/[_\s]/g, '');
             if (targetAudience === 'all' || targetAudience === normalizedUserRole) {
               isTargeted = true;
-              console.log(`✅ Audience match (no roles set):`, notification.title);
             }
           }
         }
 
-        // Filter Logic:
-        // Hide if I sent it but am NOT a target (prevents cluttering inbox with personal sent items).
-        if (isSentByMe && !isTargeted) return false;
+        // If I sent it, I should see it in my history/control center
+        if (isSentByMe) return true;
 
-        return isTargeted;
+        if (!isTargeted) return false;
+
+        // 5. Type-based Filtering (Communication Preferences)
+        const type = (notification.type || 'info').toLowerCase();
+        const quoteEnabled = preferences.quote_notifications !== false;
+        const systemEnabled = preferences.system_notifications !== false;
+        const pushEnabled = preferences.push_notifications !== false;
+
+        if (!quoteEnabled && (type === 'message' || type === 'status' || type === 'quote'))
+          return false;
+        if (!systemEnabled && type === 'alert') return false;
+        if (!pushEnabled && (type === 'announcement' || type === 'push')) return false;
+
+        return true;
       });
 
       setNotifications(filteredNotifications);
@@ -191,32 +210,41 @@ export function NotificationProvider({ children }) {
       setIsLoading(false);
       isLoadingRef.current = false;
     }
-  }, [user]);
+  }, []); // Stable — reads user via ref to avoid recreating on every user mutation
 
-  const intervalRef = React.useRef(null);
+  // Heartbeat: Poll unread count every 30 seconds
+  const { data: heartbeatData } = useQuery({
+    queryKey: ['notifications', 'unread-count', user?.id],
+    queryFn: () => notificationService.getUnreadCount(),
+    enabled: !!user?.id && canViewNotifications(user),
+    refetchInterval: 30000, // 30 seconds
+    refetchOnWindowFocus: true,
+  });
+
+  const previousCountRef = React.useRef(null);
 
   useEffect(() => {
     if (!user) return;
 
-    loadNotifications();
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
+    // Initial load
+    if (previousCountRef.current === null) {
+      loadNotifications();
     }
 
-    intervalRef.current = setInterval(() => {
-      if (user) {
-        loadNotifications();
-      }
-    }, 60000);
+    const serverCount =
+      heartbeatData?.unread_count ??
+      heartbeatData?.data?.unread_count ??
+      heartbeatData?.unreadCount ??
+      heartbeatData?.data?.unreadCount ??
+      0;
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [user?.id, loadNotifications]);
+    // If count has changed, reload the full list
+    if (previousCountRef.current !== null && serverCount !== previousCountRef.current) {
+      loadNotifications();
+    }
+
+    previousCountRef.current = serverCount;
+  }, [heartbeatData, user?.id, loadNotifications]); // loadNotifications intentionally omitted if stable, but here we include it for safety if it's not truly stable in some edge cases. Actually it is stable.
 
   const createNotification = (data) => {};
 
@@ -345,6 +373,8 @@ export function NotificationProvider({ children }) {
       userNotifications: normalizedNotifications,
       unreadCount,
       isLoading,
+      loadNotifications,
+      refreshNotifications: loadNotifications,
       createNotification,
       updateNotification: () => {},
       markAsRead,
@@ -356,6 +386,7 @@ export function NotificationProvider({ children }) {
       normalizedNotifications,
       unreadCount,
       isLoading,
+      loadNotifications,
       markAsRead,
       markAllAsRead,
       clearAllNotifications,

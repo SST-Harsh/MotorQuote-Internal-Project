@@ -4,12 +4,10 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, ShieldAlert, X } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuth } from '@/context/AuthContext';
-import { useLanguage } from '@/context/LanguageContext';
 
 export default function SystemAlertBanner() {
   const { userNotifications } = useNotifications();
   const { user } = useAuth();
-  const { t } = useLanguage();
   const router = useRouter();
 
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
@@ -37,12 +35,10 @@ export default function SystemAlertBanner() {
 
   const isSuperAdmin = user?.role === 'super_admin';
 
-  let alertTitle = t('alerts.systemAlert');
+  let alertTitle = 'System Alert';
   if (isSuperAdmin) {
     alertTitle =
-      threatNotification.type === 'security_breach'
-        ? t('alerts.securityBreach')
-        : t('alerts.backendAlert');
+      threatNotification.type === 'security_breach' ? 'Security Breach' : 'Backend Alert';
   }
 
   return (
@@ -53,7 +49,7 @@ export default function SystemAlertBanner() {
     >
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-soft-light pointer-events-none"></div>
 
-      <div className="max-w-7xl mx-auto flex items-center justify-between relative z-10">
+      <div className="max-w-[1600px] mx-auto flex items-center justify-between relative z-10">
         <div className="flex items-center gap-4">
           <div className="relative">
             <div className="absolute inset-0 bg-[rgb(var(--color-surface))]/20 rounded-full animate-ping opacity-75"></div>
@@ -73,14 +69,14 @@ export default function SystemAlertBanner() {
               </span>
             </div>
             <span className="text-sm md:text-base font-bold drop-shadow-sm mt-0.5 group-hover:translate-x-0.5 transition-transform">
-              {threatNotification.message || t('alerts.criticalAttention')}
+              {threatNotification.message || 'Critical attention required'}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="hidden md:flex items-center gap-2 text-xs font-bold bg-[rgb(var(--color-surface))]/20 hover:bg-[rgb(var(--color-surface))]/30 px-4 py-2 rounded-full backdrop-blur-md border border-[rgb(var(--color-surface))]/20 shadow-sm transition-all duration-300 group-hover:pr-3 group-hover:gap-3">
-            {t('alerts.viewDetails')}
+            View Details
             <span className="group-hover:translate-x-1 transition-transform duration-300">
               &rarr;
             </span>

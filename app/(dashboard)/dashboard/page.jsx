@@ -11,8 +11,10 @@ import analyticsService from '@/services/analyticsService';
 const SuperAdminDashboard = dynamic(
   () => import('@/components/views/dashboard/SuperAdminDashboard')
 );
-const AdminDashboard = dynamic(() => import('@/components/views/dashboard/AdminDashboard'));
 const DealerDashboard = dynamic(() => import('@/components/views/dashboard/DealerDashboard'));
+const SupportStaffDashboard = dynamic(
+  () => import('@/components/views/dashboard/SupportStaffDashboard')
+);
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -33,7 +35,6 @@ export default function DashboardPage() {
     recentActivity: [],
   });
 
-  /*
   const fetchData = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
@@ -43,23 +44,13 @@ export default function DashboardPage() {
       let monthlyTrends = [];
       if (user.role === 'super_admin') {
         try {
-          // Fetch summary for Super Admin as requested (Graph data not available in summary)
           const analyticsRes = await analyticsService.getAnalyticsSummary();
           analyticsStats = analyticsRes?.data || analyticsRes;
-          monthlyTrends = []; // Summary API does not provide trends
-        } catch (err) {
-          console.warn('Failed to fetch analytics summary', err);
-        }
-      } else if (user.role === 'admin') {
-        try {
-          // Fetch scoped summary for Admin
-          const analyticsRes = await analyticsService.getAnalyticsSummary();
-          analyticsStats = analyticsRes?.data || analyticsRes;
+          monthlyTrends = [];
         } catch (err) {
           console.warn('Failed to fetch analytics summary', err);
         }
       }
-      console.log('📊 [Dashboard] Analytics Stats:', analyticsStats); // DEBUG: Check what we actually have
 
       if (user.role === 'super_admin') {
         const [logsResult, usersResult] = await Promise.allSettled([
@@ -115,6 +106,13 @@ export default function DashboardPage() {
         const mappedLogs = sortedLogs.map((log) => {
           let displayUser = 'System';
           let userAvatar = log.user_avatar || null;
+          let userRole =
+            log.user_role ||
+            log.role ||
+            log.role_name ||
+            log.user_role_name ||
+            log.user?.role ||
+            null;
 
           const userId = log.user_id || log.userId || log.user?.id;
           const rawName =
@@ -129,9 +127,18 @@ export default function DashboardPage() {
               user.name ||
               (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Me');
             userAvatar = user.profile_picture || null;
+            userRole = userRole || user.role;
           }
 
           if (userId && userMap[String(userId)]) {
+            const actor = userMap[String(userId)];
+            userRole =
+              userRole ||
+              actor?.role ||
+              actor?.role_name ||
+              actor?.roleName ||
+              actor?.role?.name ||
+              actor?.role?.code;
             const u = userMap[String(userId)];
             displayUser =
               u.full_name ||
@@ -200,6 +207,7 @@ export default function DashboardPage() {
 
           return {
             user_name: String(displayUser),
+            user_role: userRole,
             action: String(action),
             description: String(description),
             timestamp: String(log.timestamp || log.created_at || new Date().toISOString()),
@@ -239,94 +247,7 @@ export default function DashboardPage() {
           },
           recentActivity: finalActivity,
         });
-      } else if (user.role === 'admin') {
-        try {
-          console.log('🔍 [Admin Dashboard] Fetching Admin Analytics for User:', user.id);
-
-          // Fetch Analytics AND Users (for mapping names/avatars)
-          const [analyticsRes, usersRes] = await Promise.all([
-            analyticsService.getAdminAnalytics({ user_id: user.id }),
-            userService.getUsers({ role: 'dealer_manager,support_staff' }),
-          ]);
-
-          const adminData = analyticsRes?.data || analyticsRes;
-          const usersList = Array.isArray(usersRes)
-            ? usersRes
-            : usersRes?.users || usersRes?.data || [];
-
-          // Create User Map
-          const userMap = usersList.reduce((acc, u) => {
-            acc[u.id] = u;
-            return acc;
-          }, {});
-          // Add current user to map
-          userMap[user.id] = user;
-
-          console.log('📊 [Admin Dashboard] Analytics Data:', adminData);
-
-          // 1. Filter Users Count (Only dealer_manager + support_staff)
-          const relevantRoles = ['dealer_manager', 'support_staff'];
-          const filteredUserCount = (adminData.users?.users_by_role || [])
-            .filter((r) => relevantRoles.includes(r.role_name))
-            .reduce((sum, r) => sum + r.count, 0);
-
-          // 2. Resolve recent activity user details
-          const resolvedActivity = (adminData.recent_activity || []).map((item) => {
-            const actor = userMap[item.user_id];
-            let displayName = 'System';
-            let avatar = null;
-
-            if (item.user_id === user.id) {
-              displayName =
-                user.full_name ||
-                (user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : null) ||
-                user.name ||
-                'Me';
-              avatar = user.profile_picture; // Always use current profile picture for self
-            } else if (actor) {
-              displayName =
-                actor.full_name ||
-                actor.name ||
-                `${actor.first_name || ''} ${actor.last_name || ''}`.trim() ||
-                actor.username;
-              avatar = actor.profile_picture;
-            }
-
-            return {
-              ...item,
-              user_name: displayName,
-              user_avatar: avatar,
-              // Ensure timestamp is compatible
-              timestamp: item.created_at || item.timestamp,
-            };
-          });
-
-          // Ensure defaults to prevent crashes
-          const safeStats = {
-            quotes: adminData.quotes?.total_quotes || 0,
-            revenue: adminData.revenue?.total_revenue || 0,
-            users: filteredUserCount, // Use filtered count
-            dealers: adminData.dealerships?.active_dealerships || 0,
-            // Detailed stats for enhanced dashboard
-            support: adminData.support_tickets || {},
-            quoteStats: adminData.quotes || {},
-            revenueStats: adminData.revenue || {},
-            userStats:
-              {
-                ...adminData.users,
-                active_users: filteredUserCount, // Override active_users with our filtered count for display
-              } || {},
-          };
-
-          setDashboardData({
-            stats: safeStats,
-            recentActivity: resolvedActivity,
-          });
-        } catch (err) {
-          console.error('Failed to fetch admin dashboard data', err);
-          setDashboardData((prev) => ({ ...prev, recentActivity: [] }));
-        }
-      }
+      } // end super_admin block
     } catch (error) {
       console.error('Dashboard calculation error', error);
     } finally {
@@ -343,63 +264,6 @@ export default function DashboardPage() {
       mounted = false;
     };
   }, [fetchData, user]);
-  */
-
-  // MOCK DATA FOR DESIGN REFERENCE
-  useEffect(() => {
-    setDashboardData({
-      stats: {
-        totalQuotes: 1250,
-        pendingApprovals: 45,
-        totalConversions: 850,
-        conversionRate: 68,
-        totalRevenue: 1250000,
-        monthlyGrowth: 12.5,
-        quotes: 1250,
-        revenue: 1250000,
-        users: 156,
-        dealers: 42,
-        support: { open_tickets: 5, total_tickets: 120, resolved_tickets: 115 },
-        quoteStats: { total_quotes: 1250, monthly_growth: 12.5 },
-        revenueStats: { total_revenue: 1250000, revenue_growth: 8.4 },
-        userStats: { active_users: 156, total_users: 200 },
-      },
-      recentActivity: [
-        {
-          user_name: 'John Doe',
-          action: 'created a quote',
-          description: 'Quote #1234 generated',
-          timestamp: new Date().toISOString(),
-        },
-        {
-          user_name: 'Jane Smith',
-          action: 'logged in',
-          description: 'System login',
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      // Add specific mock data for new charts if needed by AdminDashboard
-      salesBySegment: [
-        { name: 'Mon', value: 300 },
-        { name: 'Tue', value: 450 },
-        { name: 'Wed', value: 398 },
-        { name: 'Thu', value: 500 },
-        { name: 'Fri', value: 420 },
-        { name: 'Sat', value: 550 },
-        { name: 'Sun', value: 600 },
-      ],
-      inventoryBySegment: [
-        { name: 'Mon', value: 200 },
-        { name: 'Tue', value: 250 },
-        { name: 'Wed', value: 150 }, // 15% drop shape
-        { name: 'Thu', value: 300 },
-        { name: 'Fri', value: 280 },
-        { name: 'Sat', value: 320 },
-        { name: 'Sun', value: 350 },
-      ],
-    });
-    setIsLoading(false);
-  }, []);
 
   if (!user) {
     return <div className="p-8">Please log in to view the dashboard.</div>;
@@ -414,17 +278,10 @@ export default function DashboardPage() {
           loading={isLoading}
         />
       );
-    case 'admin':
-      return (
-        <AdminDashboard
-          stats={dashboardData.stats}
-          recentQuotes={dashboardData.recentQuotes}
-          recentActivity={dashboardData.recentActivity}
-          loading={isLoading}
-        />
-      );
     case 'dealer_manager':
       return <DealerDashboard />;
+    case 'support_staff':
+      return <SupportStaffDashboard />;
     default:
       return (
         <div className="p-8 text-center text-red-500">

@@ -23,7 +23,15 @@ const notificationService = {
 
   getAllNotifications: async (params) => {
     try {
-      const response = await api.get('/notifications/all', { params });
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      const user = userStr ? JSON.parse(userStr) : null;
+      const isDealer =
+        user?.role === 'dealer_manager' ||
+        user?.role === 'dealer' ||
+        user?.role === 'support_staff';
+      const endpoint = isDealer ? '/dealer/notifications' : '/notifications/all';
+
+      const response = await api.get(endpoint, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching all notifications:', error);
@@ -46,7 +54,10 @@ const notificationService = {
     try {
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       const user = userStr ? JSON.parse(userStr) : null;
-      const isDealer = user?.role === 'dealer_manager' || user?.role === 'dealer';
+      const isDealer =
+        user?.role === 'dealer_manager' ||
+        user?.role === 'dealer' ||
+        user?.role === 'support_staff';
       const endpoint = isDealer ? '/dealer/notifications' : '/notifications/user';
 
       const response = await api.get(endpoint, { params });
@@ -61,7 +72,10 @@ const notificationService = {
     try {
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       const user = userStr ? JSON.parse(userStr) : null;
-      const isDealer = user?.role === 'dealer_manager' || user?.role === 'dealer';
+      const isDealer =
+        user?.role === 'dealer_manager' ||
+        user?.role === 'dealer' ||
+        user?.role === 'support_staff';
       const endpoint = isDealer
         ? '/dealer/notifications/unread-count'
         : '/notifications/unread-count';
@@ -78,7 +92,10 @@ const notificationService = {
     try {
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       const user = userStr ? JSON.parse(userStr) : null;
-      const isDealer = user?.role === 'dealer_manager' || user?.role === 'dealer';
+      const isDealer =
+        user?.role === 'dealer_manager' ||
+        user?.role === 'dealer' ||
+        user?.role === 'support_staff';
       const endpoint = isDealer ? `/dealer/notifications/${id}/read` : `/notifications/${id}/read`;
 
       const response = await api.post(endpoint);
@@ -93,17 +110,15 @@ const notificationService = {
     try {
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       const user = userStr ? JSON.parse(userStr) : null;
-      const isDealer = user?.role === 'dealer_manager' || user?.role === 'dealer';
+      const isDealer =
+        user?.role === 'dealer_manager' ||
+        user?.role === 'dealer' ||
+        user?.role === 'support_staff';
 
-      // For dealers, we rely primarily on the individual marking in the UI history view
-      // since a bulk endpoint /dealer/notifications/read-all may not exist.
-      const endpoint = isDealer ? null : '/notifications/read-all';
+      const endpoint = isDealer ? '/dealer/notifications/read-all' : '/notifications/read-all';
 
-      if (endpoint) {
-        const response = await api.post(endpoint);
-        return response.data;
-      }
-      return { success: true, message: 'Marked as read locally' };
+      const response = await api.post(endpoint);
+      return response.data;
     } catch (error) {
       console.error('Failed to mark all notifications as read on server:', error);
       throw error;
@@ -112,10 +127,18 @@ const notificationService = {
 
   deleteNotification: async (id) => {
     try {
-      const response = await api.delete(`/notifications/${id}`);
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      const user = userStr ? JSON.parse(userStr) : null;
+      const isDealer =
+        user?.role === 'dealer_manager' ||
+        user?.role === 'dealer' ||
+        user?.role === 'support_staff';
+      const endpoint = isDealer ? `/dealer/notifications/${id}/hide` : `/notifications/${id}/hide`;
+
+      const response = await api.post(endpoint);
       return response.data;
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      console.error('Error hiding notification:', error);
       throw error;
     }
   },

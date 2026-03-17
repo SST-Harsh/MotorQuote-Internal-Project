@@ -17,8 +17,17 @@ export default function TabNavigation({
         return (
           <button
             key={tab.key}
-            onClick={() => onTabChange(tab.key)}
-            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+            onClick={(e) => {
+              onTabChange(tab.key);
+              if (scrollable) {
+                e.currentTarget.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'nearest',
+                  inline: 'center',
+                });
+              }
+            }}
+            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
               isActive
                 ? 'bg-[rgb(var(--color-primary))] text-white shadow-lg shadow-[rgb(var(--color-primary))]/20'
                 : 'text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))]'

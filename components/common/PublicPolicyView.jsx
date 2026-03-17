@@ -4,7 +4,11 @@ import Link from 'next/link';
 import { ArrowLeft, FileText, Shield } from 'lucide-react';
 import Loader from './Loader';
 
+import { useConfig } from '@/context/ConfigContext';
+
 export default function PublicPolicyView({ title, fetcher, type }) {
+  const { config } = useConfig();
+  const { branding } = config;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,12 +38,15 @@ export default function PublicPolicyView({ title, fetcher, type }) {
   return (
     <div className="min-h-screen bg-[rgb(var(--color-background))] py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        {/* <div className="mb-6">
-                    <Link href="/login" className="flex items-center text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] transition-colors">
-                        <ArrowLeft size={16} className="mr-2" />
-                        Back to Login
-                    </Link>
-                </div> */}
+        <div className="mb-6">
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[rgb(var(--color-text))] hover:text-[rgb(var(--color-primary))] transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Back
+          </Link>
+        </div>
 
         <div className="bg-[rgb(var(--color-surface))] rounded-2xl shadow-xl overflow-hidden border border-[rgb(var(--color-border))]">
           <div className="bg-[rgb(var(--color-primary))] px-6 py-8 sm:px-10 text-white relative overflow-hidden">
@@ -79,7 +86,7 @@ export default function PublicPolicyView({ title, fetcher, type }) {
           </div>
 
           <div className="bg-[rgb(var(--color-background))] px-6 py-4 border-t border-[rgb(var(--color-border))] text-center text-xs text-[rgb(var(--color-text-muted))]">
-            &copy; {new Date().getFullYear()} MotorQuote Ltd. All rights reserved.
+            &copy; {new Date().getFullYear()} {branding.appName} Ltd. All rights reserved.
           </div>
         </div>
       </div>

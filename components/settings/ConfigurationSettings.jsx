@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, Shield, UserPlus, ShieldCheck, Save } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../../context/AuthContext';
-import securityService from '../../services/securityService';
+import authService from '../../services/authService';
+import Loader from '../common/Loader';
 
 export default function ConfigurationSettings() {
   const { user } = useAuth();
@@ -13,22 +14,27 @@ export default function ConfigurationSettings() {
   const [supportConfig, setSupportConfig] = useState({ dealer2FA: false, enforce2FA: false });
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchConfig = async () => {
+    const loadConfig = async () => {
       try {
-        const settings = await securityService.getSettings();
-        const config = {
-          dealer2FA: settings.enforce_dealer_2fa || false,
-          enforce2FA: settings.enforce_admin_2fa || false,
-        };
+        // Global config fetching is currently handled via static defaults or direct mutations
+        // until a specific sync endpoint is re-established.
+        const saved = localStorage.getItem('support_config');
+        const config = saved ? JSON.parse(saved) : { dealer2FA: false, enforce2FA: false };
         setInitialConfig(config);
         setSupportConfig(config);
       } catch (error) {
-        console.error('Failed to fetch security config', error);
+        console.error('Failed to load local config:', error);
+        const config = { dealer2FA: false, enforce2FA: false };
+        setInitialConfig(config);
+        setSupportConfig(config);
+      } finally {
+        setIsLoading(false);
       }
     };
-    fetchConfig();
+    loadConfig();
   }, []);
 
   useEffect(() => {
@@ -46,10 +52,22 @@ export default function ConfigurationSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await securityService.updateSettings({
-        enforce_dealer_2fa: supportConfig.dealer2FA,
-        enforce_admin_2fa: supportConfig.enforce2FA,
-      });
+      // Check changes for each role and call appropriate endpoint
+      if (supportConfig.dealer2FA !== initialConfig.dealer2FA) {
+        if (supportConfig.dealer2FA) {
+          await authService.enable2fa('dealer_manager');
+        } else {
+          await authService.disable2FA('dealer_manager');
+        }
+      }
+
+      if (supportConfig.enforce2FA !== initialConfig.enforce2FA) {
+        if (supportConfig.enforce2FA) {
+          await authService.enable2fa('dealer_manager');
+        } else {
+          await authService.disable2FA('dealer_manager');
+        }
+      }
 
       setInitialConfig(supportConfig);
       setHasChanges(false);
@@ -57,14 +75,11 @@ export default function ConfigurationSettings() {
       Swal.fire({
         icon: 'success',
         title: 'Settings Saved',
-        text: '2FA enforcement settings have been updated on the server.',
+        text: '2FA enforcement settings have been updated.',
         timer: 2000,
         showConfirmButton: false,
         toast: true,
         position: 'top-end',
-        customClass: {
-          popup: 'colored-toast',
-        },
       });
     } catch (error) {
       Swal.fire({
@@ -84,6 +99,8 @@ export default function ConfigurationSettings() {
     setHasChanges(false);
   };
 
+  if (isLoading) return <Loader />;
+
   return (
     <div className="bg-[rgb(var(--color-surface))] rounded-xl shadow-sm border border-[rgb(var(--color-border))] p-8 space-y-8">
       <div className="border-[rgb(var(--color-border))]">
@@ -92,30 +109,32 @@ export default function ConfigurationSettings() {
             <Shield size={20} className="text-[rgb(var(--color-primary))]" />
             2FA Enforcement Settings
           </h2>
-          {hasChanges && (
-            <div className="flex gap-2">
-              <button
-                onClick={handleCancel}
-                disabled={isSaving}
-                className="px-4 py-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="flex items-center gap-2 px-4 py-2 bg-[rgb(var(--color-primary))] text-white text-sm font-bold rounded-lg hover:bg-[rgb(var(--color-primary-dark))] disabled:opacity-70 transition-colors"
-              >
-                <Save size={16} />
-                {isSaving ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2">
+            <button
+              onClick={handleCancel}
+              disabled={isSaving || !hasChanges}
+              className="px-4 py-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving || !isSuperAdmin}
+              className={`flex items-center gap-2 text-white px-6 py-2 rounded-xl transition-all shadow-lg bg-[rgb(var(--color-primary))]`}
+            >
+              {isSaving ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save size={18} />
+              )}
+              <span>Save Changes</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Enforce 2FA for Dealer Managers */}
-          {(user?.role === 'super_admin' || user?.role === 'admin') && (
+          {user?.role === 'super_admin' && (
             <div className="flex items-start justify-between p-4 bg-[rgb(var(--color-background))] rounded-lg border border-[rgb(var(--color-border))]">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">

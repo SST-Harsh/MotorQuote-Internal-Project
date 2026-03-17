@@ -90,7 +90,7 @@ const quoteService = {
       delete requestData._useDealerEndpoint;
 
       const endpoint = useDealerEndpoint ? `/dealer/quotes/${id}/status` : `/quotes/${id}/status`;
-      const response = await api.post(endpoint, requestData);
+      const response = await api.put(endpoint, requestData);
       return response.data;
     } catch (error) {
       throw error;
@@ -184,6 +184,22 @@ const quoteService = {
         params: { ...requestParams, format },
         responseType: 'blob',
       });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  generateDocuments: async (id, data) => {
+    try {
+      const useDealerEndpoint = data._useDealerEndpoint;
+      const requestData = { ...data };
+      delete requestData._useDealerEndpoint;
+
+      const endpoint = useDealerEndpoint
+        ? `/dealer/quotes/${id}/documents/generate`
+        : `/quotes/${id}/documents/generate`;
+      const response = await api.post(endpoint, requestData);
       return response.data;
     } catch (error) {
       throw error;

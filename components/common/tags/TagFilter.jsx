@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from '@/context/LanguageContext';
 import tagService from '@/services/tagService';
 import { Check } from 'lucide-react';
 
@@ -8,7 +7,6 @@ import { Check } from 'lucide-react';
  * Dropdown for filtering lists by tags with pointed "price tag" aesthetic
  */
 const TagFilter = ({ selectedTags = [], onChange, type = null, options = null }) => {
-  const { t } = useTranslation('common');
   const [availableTags, setAvailableTags] = useState(options || []);
   const [isLoading, setIsLoading] = useState(!options);
 

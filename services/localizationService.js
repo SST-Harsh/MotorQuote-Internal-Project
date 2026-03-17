@@ -35,7 +35,7 @@ const localizationService = {
    * Hardcoded list of supported locales (Frontend only)
    */
   getLocales: async () => {
-    return ['en', 'es', 'ar', 'hi', 'gu'];
+    return ['en'];
   },
 
   /**

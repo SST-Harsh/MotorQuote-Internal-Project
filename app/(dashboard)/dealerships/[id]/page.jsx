@@ -1,5 +1,13 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import { useAuth } from '@/context/AuthContext';
+import { normalizeRole } from '@/utils/roleCommon';
+
+const DealerDealershipDetail = dynamic(
+  () => import('@/components/views/dealerships/DealerDealershipDetail'),
+  { ssr: false }
+);
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -28,6 +36,10 @@ import {
   Plus,
   Shield,
   Eye,
+  ChevronLeft,
+  DollarSign,
+  Target,
+  Activity,
 } from 'lucide-react';
 import tagService from '@/services/tagService';
 import TagList from '@/components/common/tags/TagList';
@@ -35,12 +47,16 @@ import TagList from '@/components/common/tags/TagList';
 export default function DealershipDetailPage({ params }) {
   const { id } = params;
   const router = useRouter();
+  const { user } = useAuth();
+  const isDealerManager = user && normalizeRole(user.role) === 'dealer_manager';
 
+  // All hooks must be called unconditionally before any early return
   const { data: dealership, isLoading: dealershipLoading, error } = useDealership(id);
-  const { data: usersData = [], isLoading: usersLoading } = useUsers();
+  const { data: usersData = [], isLoading: usersLoading } = useUsers(
+    {},
+    { enabled: !isDealerManager }
+  );
   const [dealerTags, setDealerTags] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -51,25 +67,10 @@ export default function DealershipDetailPage({ params }) {
     }
   }, [id]);
 
-  useEffect(() => {
-    if (id) {
-      setIsHistoryLoading(true);
-      auditService
-        .getAuditLogs({ dealership_id: id, limit: 12 })
-        .then((res) => {
-          const logs = Array.isArray(res) ? res : res.data || res.logs || [];
-          setHistory(logs);
-        })
-        .catch((err) => {
-          console.error('Failed to fetch dealership activity:', err);
-          auditService
-            .getResourceHistory('dealership', id)
-            .then((res) => setHistory(Array.isArray(res) ? res : res.data || []))
-            .catch((e) => console.error('Total history failure:', e));
-        })
-        .finally(() => setIsHistoryLoading(false));
-    }
-  }, [id]);
+  // Dealer Managers see their own dedicated read-only view (after hooks)
+  if (isDealerManager) {
+    return <DealerDealershipDetail id={id} />;
+  }
 
   if (dealershipLoading || usersLoading) {
     return (
@@ -95,7 +96,7 @@ export default function DealershipDetailPage({ params }) {
           <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
             <Ban size={32} />
           </div>
-          <h2 className="text-xl font-black text-text mb-2">Dealership Not Found</h2>
+          <h2 className="text-xl font-bold text-text mb-2">Dealership Not Found</h2>
           <p className="text-text-muted mb-6">
             The dealership you&apos;re looking for doesn&apos;t exist or you don&apos;t have access.
           </p>
@@ -148,10 +149,25 @@ export default function DealershipDetailPage({ params }) {
     return String(userDealershipId) === String(id);
   });
 
-  const performance = dealership.performance || {};
-  const quotes = performance.quotes || dealership.total_quotes || 0;
-  const conversion = performance.conversion || dealership.conversion_rate || 0;
-  const revenue = performance.revenue || dealership.total_revenue || 0;
+  const performanceData = dealership.performance?.performance || dealership.performance || {};
+  const dailyTrends = dealership.performance?.daily_trends || [];
+
+  const totalQuotes = performanceData.total_quotes || dealership.total_quotes || 0;
+  const totalRevenue = parseFloat(performanceData.total_revenue || dealership.total_revenue || 0);
+  const avgQuoteAmount = parseFloat(
+    performanceData.avg_quote_amount || dealership.avg_quote_amount || 0
+  );
+  const acceptedQuotes = performanceData.accepted_quotes || dealership.accepted_quotes || 0;
+  const pendingQuotes = performanceData.pending_quotes || dealership.pending_quotes || 0;
+  const rejectedQuotes = performanceData.rejected_quotes || dealership.rejected_quotes || 0;
+  const conversionRate =
+    performanceData.conversion_rate || dealership.conversion_rate || dealership.approval_rate || 0;
+  const avgResponseTime =
+    performanceData.avg_response_time_days || dealership.avg_response_time_days || 0;
+
+  const quotes = totalQuotes;
+  const conversion = conversionRate;
+  const revenue = totalRevenue;
 
   // Resolve Management Team Users
   const ownerId = dealership.dealer_owner || dealership.dealer_id || dealership.dealer_owner_id;
@@ -165,14 +181,9 @@ export default function DealershipDetailPage({ params }) {
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.back()}
-          className="group flex items-center gap-2 text-text-muted hover:text-primary transition-all pr-4"
+          className="flex items-center gap-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors"
         >
-          <div className="p-2 rounded-xl bg-surface border border-border group-hover:bg-primary/5 group-hover:border-primary/20 transition-all">
-            <ArrowLeft size={16} />
-          </div>
-          <span className="font-bold text-sm tracking-tight hidden sm:inline">
-            Back to Dashboard
-          </span>
+          <ChevronLeft size={20} /> Back to Dealership
         </button>
       </div>
 
@@ -192,7 +203,7 @@ export default function DealershipDetailPage({ params }) {
                     sizes="(max-width: 768px) 112px, 144px"
                   />
                 ) : (
-                  <span className="text-5xl font-black text-primary/40 transition-all duration-500 group-hover:text-primary group-hover:scale-110 select-none">
+                  <span className="text-5xl font-bold text-primary/40 transition-all duration-500 group-hover:text-primary group-hover:scale-110 select-none">
                     {initial}
                   </span>
                 )}
@@ -210,12 +221,12 @@ export default function DealershipDetailPage({ params }) {
 
             <div className="flex-1 space-y-6 text-center lg:text-left min-w-0">
               <div className="space-y-3">
-                <h1 className="text-3xl md:text-5xl font-black text-text tracking-tight leading-tight truncate">
+                <h1 className="text-3xl md:text-5xl font-bold text-text tracking-tight leading-tight truncate">
                   {dealershipName}
                 </h1>
                 <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5">
                   <div
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor} border shadow-sm`}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor} border shadow-sm`}
                   >
                     <div
                       className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-success animate-pulse' : 'bg-error'}`}
@@ -225,12 +236,12 @@ export default function DealershipDetailPage({ params }) {
                   <TagList tags={dealerTags} />
                   <div className="flex items-center gap-2 text-text-muted bg-background/50 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
                     <Fingerprint size={12} className="text-primary/60" />
-                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider">
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-wide">
                       ID: {dealership.id?.slice(-8).toUpperCase()}
                     </span>
                   </div>
                   {dealership.code && (
-                    <div className="px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 text-[10px] font-black uppercase tracking-widest leading-none shadow-sm">
+                    <div className="px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 text-[10px] font-bold uppercase tracking-wider leading-none shadow-sm">
                       {dealership.code}
                     </div>
                   )}
@@ -239,7 +250,7 @@ export default function DealershipDetailPage({ params }) {
 
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 md:gap-10 pt-2 border-t border-border/50">
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-[0.15em]">
+                  <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-wider">
                     Location Team
                   </span>
                   <div className="flex items-center gap-3">
@@ -247,7 +258,7 @@ export default function DealershipDetailPage({ params }) {
                       {dealershipUsers.slice(0, 4).map((u, i) => (
                         <div
                           key={i}
-                          className="w-8 h-8 rounded-full border-2 border-surface bg-background flex items-center justify-center text-[10px] font-black text-text-muted shadow-sm overflow-hidden ring-1 ring-border relative group/avatar"
+                          className="w-8 h-8 rounded-full border-2 border-surface bg-background flex items-center justify-center text-[10px] font-bold text-text-muted shadow-sm overflow-hidden ring-1 ring-border relative group/avatar"
                         >
                           {u.profile_picture ? (
                             <Image
@@ -265,12 +276,12 @@ export default function DealershipDetailPage({ params }) {
                         </div>
                       ))}
                       {dealershipUsers.length > 4 && (
-                        <div className="w-8 h-8 rounded-full border-2 border-surface bg-[rgb(var(--color-primary)/0.1)] flex items-center justify-center text-[10px] font-black text-primary shadow-sm ring-1 ring-border">
+                        <div className="w-8 h-8 rounded-full border-2 border-surface bg-[rgb(var(--color-primary)/0.1)] flex items-center justify-center text-[10px] font-bold text-primary shadow-sm ring-1 ring-border">
                           +{dealershipUsers.length - 4}
                         </div>
                       )}
                     </div>
-                    <span className="text-xs font-black text-text/80">
+                    <span className="text-xs font-bold text-text/80">
                       {dealershipUsers.length}{' '}
                       <span className="text-text-muted font-bold">Members</span>
                     </span>
@@ -278,12 +289,12 @@ export default function DealershipDetailPage({ params }) {
                 </div>
                 <div className="hidden md:block w-px h-10 bg-border/60"></div>
                 <div className="flex flex-col gap-1.5 text-center lg:text-left">
-                  <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-[0.15em]">
+                  <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-wider">
                     Registered Since
                   </span>
                   <div className="flex items-center gap-2 justify-center lg:justify-start">
                     <Calendar size={14} className="text-primary/60" />
-                    <span className="text-sm font-black text-text">{createdDate}</span>
+                    <span className="text-sm font-bold text-text">{createdDate}</span>
                   </div>
                 </div>
               </div>
@@ -303,7 +314,7 @@ export default function DealershipDetailPage({ params }) {
               <div className="p-2.5 rounded-xl bg-primary/10 text-primary shadow-sm">
                 <Building2 size={20} />
               </div>
-              <h2 className="text-xl font-black text-text tracking-tight uppercase">
+              <h2 className="text-xl font-bold text-text tracking-tight uppercase">
                 Core Operations
               </h2>
             </div>
@@ -316,10 +327,10 @@ export default function DealershipDetailPage({ params }) {
                       <Mail size={16} />
                     </div>
                     <div className="min-w-0">
-                      <span className="text-[10px] font-black text-text-muted/60 uppercase block mb-0.5 tracking-wider">
+                      <span className="text-[10px] font-semibold text-text-muted/70 uppercase block mb-0.5 tracking-wide">
                         Business Email
                       </span>
-                      <div className="text-sm font-black text-text truncate">
+                      <div className="text-sm font-bold text-text truncate">
                         {dealership.email || dealership.contact_email || 'Not Provided'}
                       </div>
                     </div>
@@ -332,10 +343,10 @@ export default function DealershipDetailPage({ params }) {
                       <Phone size={16} />
                     </div>
                     <div className="min-w-0">
-                      <span className="text-[10px] font-black text-text-muted/60 uppercase block mb-0.5 tracking-wider">
+                      <span className="text-[10px] font-semibold text-text-muted/70 uppercase block mb-0.5 tracking-wide">
                         Direct Line
                       </span>
-                      <div className="text-sm font-black text-text">
+                      <div className="text-sm font-bold text-text">
                         {dealership.phone || dealership.contact_phone || 'Not Provided'}
                       </div>
                     </div>
@@ -348,10 +359,10 @@ export default function DealershipDetailPage({ params }) {
                       <Globe size={16} />
                     </div>
                     <div className="min-w-0">
-                      <span className="text-[10px] font-black text-text-muted/60 uppercase block mb-0.5 tracking-wider">
+                      <span className="text-[10px] font-semibold text-text-muted/70 uppercase block mb-0.5 tracking-wide">
                         Official Portal
                       </span>
-                      <div className="text-sm font-black text-primary truncate">
+                      <div className="text-sm font-bold text-primary truncate">
                         {dealership.website ? (
                           <a
                             href={dealership.website}
@@ -373,11 +384,11 @@ export default function DealershipDetailPage({ params }) {
               <div className="bg-background rounded-2xl p-6 border border-border relative flex flex-col shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <MapPin size={14} className="text-primary/60" />
-                  <span className="text-[10px] font-black text-text-muted uppercase tracking-[0.15em]">
+                  <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
                     HQ Address
                   </span>
                 </div>
-                <p className="text-base font-black text-text leading-tight mb-4">
+                <p className="text-base font-bold text-text leading-tight mb-4">
                   {dealership.address || 'Street address unlisted'}
                 </p>
                 <div className="flex flex-wrap gap-2 mb-6">
@@ -386,17 +397,17 @@ export default function DealershipDetailPage({ params }) {
                     .map((tag, i) => (
                       <span
                         key={i}
-                        className="px-2 py-0.5 rounded-lg bg-surface border border-border text-[10px] font-black uppercase text-text-muted/60 shadow-sm"
+                        className="px-2 py-0.5 rounded-lg bg-surface border border-border text-[10px] font-semibold uppercase text-text-muted/70 shadow-sm"
                       >
                         {tag}
                       </span>
                     ))}
                 </div>
                 <div className="mt-auto pt-4 border-t border-border/50 flex items-center justify-between">
-                  <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">
+                  <span className="text-[10px] font-semibold text-text-muted uppercase tracking-widest">
                     Region
                   </span>
-                  <span className="text-[10px] font-black text-text px-3 py-0.5 rounded-full bg-surface border border-border uppercase tracking-widest shadow-inner">
+                  <span className="text-[10px] font-semibold text-text px-3 py-0.5 rounded-full bg-surface border border-border uppercase tracking-widest shadow-inner">
                     {dealership.country || 'Global'}
                   </span>
                 </div>
@@ -407,24 +418,24 @@ export default function DealershipDetailPage({ params }) {
             <div className="mt-8 pt-6 border-t border-border/50 flex flex-wrap gap-6 items-center justify-between">
               <div className="flex items-center gap-8">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-widest block">
+                  <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-widest block">
                     Licensing
                   </span>
                   <div className="flex items-center gap-2">
                     <FileText size={14} className="text-info/60" />
-                    <span className="text-xs font-mono font-black text-text">
+                    <span className="text-xs font-mono font-bold text-text">
                       {dealership.license_number || 'STAGING'}
                     </span>
                   </div>
                 </div>
                 <div className="w-px h-8 bg-border/40"></div>
                 <div className="space-y-1">
-                  <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-widest block">
+                  <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-widest block">
                     Tax Identity
                   </span>
                   <div className="flex items-center gap-2">
                     <Fingerprint size={14} className="text-warning/60" />
-                    <span className="text-xs font-mono font-black text-text">
+                    <span className="text-xs font-mono font-bold text-text">
                       {dealership.tax_id || 'STAGING'}
                     </span>
                   </div>
@@ -437,10 +448,10 @@ export default function DealershipDetailPage({ params }) {
             <div className="flex items-center gap-4">
               <div className="w-1.5 h-8 bg-info rounded-full shadow-sm shadow-info/20"></div>
               <div className="space-y-1">
-                <h2 className="text-xl font-black text-text tracking-tight uppercase">
+                <h2 className="text-xl font-bold text-text tracking-tight uppercase">
                   Platform Crew
                 </h2>
-                <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] opacity-60">
+                <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest opacity-60">
                   Authorized Personnel for this location
                 </p>
               </div>
@@ -465,8 +476,7 @@ export default function DealershipDetailPage({ params }) {
 
                   const getRoleBadgeStyle = (r) => {
                     const low = r.toLowerCase();
-                    if (low.includes('admin'))
-                      return 'bg-purple-50 text-purple-600 border-purple-100';
+                    if (low.includes('super')) return 'bg-rose-50 text-rose-600 border-rose-100';
                     if (low.includes('manager') || low.includes('owner'))
                       return 'bg-blue-50 text-blue-600 border-blue-100';
                     return 'bg-orange-50 text-orange-600 border-orange-100';
@@ -488,7 +498,7 @@ export default function DealershipDetailPage({ params }) {
                               sizes="64px"
                             />
                           ) : (
-                            <span className="text-lg font-black text-primary/30 uppercase">
+                            <span className="text-lg font-bold text-primary/30 uppercase">
                               {initial}
                             </span>
                           )}
@@ -499,11 +509,11 @@ export default function DealershipDetailPage({ params }) {
                       </div>
 
                       <div className="flex-1 min-w-0 w-full mb-3">
-                        <h4 className="text-xs font-black text-text truncate group-hover:text-primary transition-colors mb-2">
+                        <h4 className="text-xs font-bold text-text truncate group-hover:text-primary transition-colors mb-2">
                           {name}
                         </h4>
                         <span
-                          className={`inline-block px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${getRoleBadgeStyle(formattedRole)}`}
+                          className={`inline-block px-3 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider ${getRoleBadgeStyle(formattedRole)}`}
                         >
                           {formattedRole}
                         </span>
@@ -534,178 +544,116 @@ export default function DealershipDetailPage({ params }) {
         </div>
 
         {/* Right Column (1/3): Metrics & Events */}
-        <div className="space-y-8 xl:space-y-10">
+        <div className="space-y-6 xl:space-y-8">
           {/* Performance Metrics Card */}
-          <div className="bg-surface rounded-3xl p-6 md:p-8 shadow-sm border border-border relative overflow-hidden group">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-2.5 rounded-xl bg-info/10 text-info">
-                <TrendingUp size={20} />
+          <div className="bg-surface rounded-3xl p-5 md:p-6 shadow-sm border border-border relative overflow-hidden">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 rounded-lg bg-info/10 text-info">
+                <TrendingUp size={18} />
               </div>
-              <h3 className="text-xl font-black text-text tracking-tight uppercase">Performance</h3>
+              <h3 className="text-lg font-bold text-text tracking-tight uppercase">Performance</h3>
             </div>
 
-            <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border shadow-sm">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-widest block">
-                    Quotes Issued
-                  </span>
-                  <div className="text-3xl font-black text-text tabular-nums">
-                    {quotes.toLocaleString()}
+            <div className="space-y-4">
+              {/* Total Quotes */}
+              <div className="p-4 rounded-2xl bg-background border border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-widest block mb-1">
+                      Total Quotes
+                    </span>
+                    <div className="text-2xl font-bold text-text tabular-nums">
+                      {totalQuotes.toLocaleString()}
+                    </div>
+                  </div>
+                  <FileText size={24} className="text-info/30" />
+                </div>
+              </div>
+
+              {/* Conversion Rate */}
+              <div className="p-4 rounded-2xl bg-background border border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-widest block mb-1">
+                      Conversion Rate
+                    </span>
+                    <div className="text-2xl font-bold text-text tabular-nums">
+                      {conversionRate}%
+                    </div>
+                  </div>
+                  <div
+                    className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${parseFloat(conversionRate) >= 20 ? 'bg-success/10 text-success' : parseFloat(conversionRate) >= 10 ? 'bg-warning/10 text-warning' : 'bg-error/10 text-error'}`}
+                  >
+                    {parseFloat(conversionRate) >= 20
+                      ? 'Optimal'
+                      : parseFloat(conversionRate) >= 10
+                        ? 'Good'
+                        : 'Low'}
                   </div>
                 </div>
-                <div className="w-16 h-10 flex items-end gap-1.5 px-2">
-                  {[30, 60, 40, 80, 50].map((h, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 bg-info/20 rounded-t-sm group-hover:bg-info/40 transition-all duration-500"
-                      style={{ height: `${h}%` }}
-                    ></div>
-                  ))}
-                </div>
               </div>
 
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border shadow-sm">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-widest block">
-                    Conversion
-                  </span>
-                  <div className="text-3xl font-black text-text tabular-nums">{conversion}%</div>
-                </div>
-                <div className="px-2.5 py-1 rounded-lg bg-success/10 text-success text-[10px] font-black border border-success/20 uppercase tracking-wider">
-                  Optimal
-                </div>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/5 to-info/5 border border-primary/10 shadow-sm">
-                <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-widest block mb-1">
+              {/* Gross Revenue */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-primary/5 to-info/5 border border-primary/10">
+                <span className="text-[10px] font-semibold text-text-muted/70 uppercase tracking-widest block mb-1">
                   Gross Revenue
                 </span>
-                <div className="text-3xl font-black text-text tabular-nums tracking-tight">
-                  ${revenue.toLocaleString()}
+                <div className="text-2xl font-bold text-text tabular-nums">
+                  $
+                  {totalRevenue.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Activity Feed Card */}
-          <div className="bg-surface rounded-3xl border border-border p-6 md:p-8 shadow-sm">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-2.5 rounded-xl bg-warning/10 text-warning shadow-sm">
-                <History size={20} />
-              </div>
-              <h3 className="text-xl font-black text-text tracking-tight uppercase">
-                Recent Pulse
-              </h3>
-            </div>
-
-            <div className="space-y-6 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-[1px] before:bg-border/60">
-              {isHistoryLoading ? (
-                Array(4)
-                  .fill(0)
-                  .map((_, i) => (
-                    <div key={i} className="flex gap-4 animate-pulse px-1">
-                      <div className="w-4 h-4 rounded-full bg-background z-10 border-2 border-surface shadow-sm ring-1 ring-border mt-1"></div>
-                      <div className="flex-1 space-y-2">
-                        <div className="h-4 bg-background rounded w-full"></div>
-                        <div className="h-3 bg-background rounded w-2/3 opacity-50"></div>
-                      </div>
-                    </div>
-                  ))
-              ) : history.length > 0 ? (
-                history.slice(0, 4).map((item, idx) => {
-                  const action = String(item.action || '').toUpperCase();
-                  const resource = String(item.resource || '').toLowerCase();
-
-                  let Icon = History;
-                  let iconColor = 'text-text-muted';
-                  let label = action;
-
-                  const resourceName = resource
-                    ? resource.charAt(0).toUpperCase() + resource.slice(1)
-                    : '';
-
-                  if (action.includes('CREATE') || action.includes('ADD')) {
-                    Icon = Plus;
-                    iconColor = 'text-success';
-                    label =
-                      resource === 'quote' ? 'New Quote' : `Created ${resourceName || 'Entry'}`;
-                  } else if (action.includes('UPDATE') || action.includes('EDIT')) {
-                    Icon = FileEdit;
-                    iconColor = 'text-info';
-                    label =
-                      resource === 'quote'
-                        ? 'Quote Updated'
-                        : `${resourceName || 'Profile'} Change`;
-                  } else if (action.includes('READ') || action.includes('VIEW')) {
-                    Icon = Eye;
-                    iconColor = 'text-primary';
-                    label = `Viewed ${resourceName}`;
-                  } else if (
-                    action.includes('STATUS') ||
-                    action.includes('APPROVE') ||
-                    action.includes('REJECT')
-                  ) {
-                    Icon = Shield;
-                    iconColor = action.includes('APPROVE')
-                      ? 'text-success'
-                      : action.includes('REJECT')
-                        ? 'text-error'
-                        : 'text-warning';
-                    label = action.includes('APPROVE')
-                      ? 'Approved Quote'
-                      : action.includes('REJECT')
-                        ? 'Rejected Quote'
-                        : `${resourceName || 'Status'} Switch`;
-                  }
-
-                  const rawActor =
-                    item.user_name || item.userName || item.user_email?.split('@')[0] || 'Operator';
-                  const matchedStaff =
-                    staffMap[rawActor] || (item.user_id ? staffMap[item.user_id] : null);
-                  let displayName = matchedStaff
-                    ? matchedStaff.first_name || matchedStaff.full_name || matchedStaff.name
-                    : rawActor;
-
-                  // Format "superadmin" -> "Superadmin"
-                  if (displayName && !displayName.includes(' ')) {
-                    displayName =
-                      displayName.charAt(0).toUpperCase() + displayName.slice(1).toLowerCase();
-                  }
-
-                  return (
-                    <div key={idx} className="flex gap-4 relative group/event">
-                      <div
-                        className={`w-6 h-6 rounded-lg bg-surface border border-border shadow-sm z-10 flex-shrink-0 flex items-center justify-center transition-all group-hover/event:scale-110 group-hover/event:border-primary/20 ${iconColor}`}
-                      >
-                        <Icon size={12} strokeWidth={2.5} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-black text-text leading-tight group-hover/event:text-primary transition-colors flex items-center gap-2">
-                          {label}
-                          <span className="w-1 h-1 rounded-full bg-border/60"></span>
-                          <span className="text-[10px] font-bold text-text-muted/60">
-                            {new Date(item.created_at || item.timestamp).toLocaleDateString([], {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
-                        </div>
-                        <p className="text-[10px] font-bold text-text-muted/80 mt-1 truncate">
-                          Processed by <span className="text-text font-black">{displayName}</span>
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-10 opacity-40">
-                  <Clock size={32} className="mx-auto mb-3" />
-                  <p className="text-[10px] font-black uppercase tracking-widest">
-                    No Recent Pulse
-                  </p>
+              {/* Stats Row */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-3 rounded-xl bg-success/5 border border-success/20 text-center">
+                  <div className="text-lg font-bold text-success tabular-nums">
+                    {acceptedQuotes}
+                  </div>
+                  <div className="text-[8px] font-semibold text-success/70 uppercase tracking-wider">
+                    Accepted
+                  </div>
                 </div>
-              )}
+                <div className="p-3 rounded-xl bg-warning/5 border border-warning/20 text-center">
+                  <div className="text-lg font-bold text-warning tabular-nums">{pendingQuotes}</div>
+                  <div className="text-[8px] font-semibold text-warning/70 uppercase tracking-wider">
+                    Pending
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-error/5 border border-error/20 text-center">
+                  <div className="text-lg font-bold text-error tabular-nums">{rejectedQuotes}</div>
+                  <div className="text-[8px] font-semibold text-error/70 uppercase tracking-wider">
+                    Rejected
+                  </div>
+                </div>
+              </div>
+
+              {/* Avg Quote & Response Time */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-[8px] font-semibold text-text-muted/70 uppercase tracking-wider block mb-1">
+                    Avg Quote
+                  </span>
+                  <div className="text-base font-bold text-primary tabular-nums">
+                    $
+                    {avgQuoteAmount.toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    })}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-[8px] font-semibold text-text-muted/70 uppercase tracking-wider block mb-1">
+                    Avg Response
+                  </span>
+                  <div className="text-base font-bold text-text tabular-nums">
+                    {parseFloat(avgResponseTime).toFixed(1)} days
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

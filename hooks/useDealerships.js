@@ -1,25 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dealershipService from '@/services/dealershipService';
 import { showSuccess, showError } from '@/utils/toast';
+import { useAuth } from '@/context/AuthContext';
+import { normalizeRole } from '@/utils/roleUtils';
 
 /**
  * Query Keys
  */
 export const dealershipKeys = {
   all: ['dealerships'],
-  lists: () => [...dealershipKeys.all, 'list'],
-  list: (filters) => [...dealershipKeys.lists(), { filters }],
-  details: () => [...dealershipKeys.all, 'detail'],
-  detail: (id) => [...dealershipKeys.details(), id],
+  lists: (isAdmin) => [...dealershipKeys.all, 'list', { isAdmin }],
+  list: (filters, isAdmin) => [...dealershipKeys.lists(isAdmin), { filters }],
+  details: (isAdmin) => [...dealershipKeys.all, 'detail', { isAdmin }],
+  detail: (id, isAdmin) => [...dealershipKeys.details(isAdmin), id],
 };
 
 /**
  * Fetch all dealerships
  */
 export const useDealerships = (params = {}, options = {}) => {
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role);
+  const isAdmin = role === 'super_admin';
+
   return useQuery({
-    queryKey: dealershipKeys.list(params),
-    queryFn: () => dealershipService.getAllDealerships(params),
+    queryKey: dealershipKeys.list(params, isAdmin),
+    queryFn: () => dealershipService.getAllDealerships(params, isAdmin),
     select: (data) => {
       if (Array.isArray(data)) return data;
       if (Array.isArray(data?.dealerships)) return data.dealerships;
@@ -35,9 +41,13 @@ export const useDealerships = (params = {}, options = {}) => {
  * Fetch single dealership by ID
  */
 export const useDealership = (id) => {
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role);
+  const isAdmin = role === 'super_admin';
+
   return useQuery({
-    queryKey: dealershipKeys.detail(id),
-    queryFn: () => dealershipService.getById(id),
+    queryKey: dealershipKeys.detail(id, isAdmin),
+    queryFn: () => dealershipService.getById(id, isAdmin),
     enabled: !!id,
     select: (data) => {
       if (Array.isArray(data)) return data;
@@ -54,11 +64,14 @@ export const useDealership = (id) => {
  */
 export const useCreateDealership = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role);
+  const isAdmin = role === 'super_admin';
 
   return useMutation({
-    mutationFn: (dealershipData) => dealershipService.createDealership(dealershipData),
+    mutationFn: (dealershipData) => dealershipService.createDealership(dealershipData, isAdmin),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: dealershipKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: dealershipKeys.all });
       showSuccess('Success', 'Dealership created successfully');
     },
     onError: (error) => {
@@ -72,12 +85,14 @@ export const useCreateDealership = () => {
  */
 export const useUpdateDealership = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role);
+  const isAdmin = role === 'super_admin';
 
   return useMutation({
-    mutationFn: ({ id, data }) => dealershipService.updateDealership(id, data),
+    mutationFn: ({ id, data }) => dealershipService.updateDealership(id, data, isAdmin),
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: dealershipKeys.detail(variables.id) });
-      queryClient.invalidateQueries({ queryKey: dealershipKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: dealershipKeys.all });
       showSuccess('Success', 'Dealership updated successfully');
     },
     onError: (error) => {
@@ -91,11 +106,14 @@ export const useUpdateDealership = () => {
  */
 export const useDeleteDealership = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role);
+  const isAdmin = role === 'super_admin';
 
   return useMutation({
-    mutationFn: (id) => dealershipService.deleteDealership(id),
+    mutationFn: (id) => dealershipService.deleteDealership(id, isAdmin),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: dealershipKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: dealershipKeys.all });
       showSuccess('Success', 'Dealership deleted successfully');
     },
     onError: (error) => {

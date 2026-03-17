@@ -6,14 +6,33 @@ import { useAuth } from './AuthContext';
 
 const PreferenceContext = createContext();
 
+const PREF_STORAGE_KEY = 'user_preferences';
+
+const DEFAULT_PREFERENCES = {
+  items_per_page: 10,
+  date_format: 'DD/MM/YYYY',
+  theme: 'light',
+  language: 'en',
+  show_quick_stats: true,
+  auto_save_quotes: true,
+};
+
+// Read cached preferences from localStorage (excluding theme to follow API-only rule)
+const getCachedPreferences = () => {
+  if (typeof window === 'undefined') return DEFAULT_PREFERENCES;
+  try {
+    const cached = localStorage.getItem(PREF_STORAGE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return { ...DEFAULT_PREFERENCES, ...parsed };
+    }
+  } catch (_) {}
+  return DEFAULT_PREFERENCES;
+};
+
 export const PreferenceProvider = ({ children }) => {
   const { user } = useAuth();
-  const [preferences, setPreferences] = useState({
-    items_per_page: 10,
-    date_format: 'DD/MM/YYYY',
-    theme: 'light',
-    language: 'en',
-  });
+  const [preferences, setPreferences] = useState(getCachedPreferences);
   const [loading, setLoading] = useState(true);
 
   const fetchPreferences = useCallback(async () => {
@@ -32,15 +51,14 @@ export const PreferenceProvider = ({ children }) => {
         }, {});
 
         const updatedPrefs = {
-          ...preferences,
+          ...DEFAULT_PREFERENCES,
           ...sanitizedData,
         };
 
         setPreferences(updatedPrefs);
 
-        // Sync to localStorage for i18n utilities
-        localStorage.setItem('items_per_page', updatedPrefs.items_per_page);
-        localStorage.setItem('date_format', updatedPrefs.date_format);
+        // Cache to localStorage for instant load on refresh
+        localStorage.setItem(PREF_STORAGE_KEY, JSON.stringify(updatedPrefs));
       }
     } catch (error) {
       console.error('Failed to fetch preferences:', error);
@@ -53,6 +71,22 @@ export const PreferenceProvider = ({ children }) => {
     fetchPreferences();
   }, [fetchPreferences]);
 
+  const updatePreference = async (key, value) => {
+    // Optimistic update
+    const updatedPrefs = { ...preferences, [key]: value };
+    setPreferences(updatedPrefs);
+
+    // Update cache
+    localStorage.setItem(PREF_STORAGE_KEY, JSON.stringify(updatedPrefs));
+
+    try {
+      await preferenceService.updatePreferences({ [key]: value });
+    } catch (error) {
+      console.error(`Failed to update preference ${key}:`, error);
+      fetchPreferences();
+    }
+  };
+
   const refreshPreferences = async () => {
     await fetchPreferences();
   };
@@ -61,6 +95,7 @@ export const PreferenceProvider = ({ children }) => {
     preferences,
     loading,
     refreshPreferences,
+    updatePreference,
   };
 
   return <PreferenceContext.Provider value={value}>{children}</PreferenceContext.Provider>;

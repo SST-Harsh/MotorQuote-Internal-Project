@@ -1,11 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import DataTable from '../../common/DataTable';
 import StatCard from '../../common/StatCard';
 import DetailViewModal from '../../common/DetailViewModal';
 import CustomDateTimePicker from '../../common/CustomDateTimePicker';
+import CustomSelect from '../../common/CustomSelect';
 import FilterDrawer from '../../common/FilterDrawer';
 import auditService from '@/services/auditService';
+import userService from '@/services/userService';
 import { useAuth } from '@/context/AuthContext';
 import { usePreference } from '@/context/PreferenceContext';
 import { formatDate, formatTime } from '@/utils/i18n';
@@ -21,9 +24,13 @@ import {
   User,
   CheckCircle,
   XCircle,
+  Globe,
 } from 'lucide-react';
 
 export default function DealerSessionManagementView() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
   const { user } = useAuth();
   const { preferences } = usePreference();
   const [sessions, setSessions] = useState([]);
@@ -34,23 +41,69 @@ export default function DealerSessionManagementView() {
     unique_ips: 0,
   });
   const [viewingSession, setViewingSession] = useState(null);
+  const [userDetails, setUserDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUserLoading, setIsUserLoading] = useState(false);
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [filters, setFilters] = useState({
+  const FILTER_STORAGE_KEY = 'dealer_sessions_filters';
+  const DATE_STORAGE_KEY = 'dealer_sessions_date';
+
+  const pathname = usePathname();
+  const isRefresh = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [dateRange, setDateRange] = useState(() => {
+    const defaultRange = { start: '', end: '' };
+    if (typeof window !== 'undefined' && isRefresh) {
+      try {
+        const saved = sessionStorage.getItem(DATE_STORAGE_KEY);
+        return saved ? JSON.parse(saved) : defaultRange;
+      } catch (_) {
+        return defaultRange;
+      }
+    }
+    return defaultRange;
+  });
+  const [filters, setFilters] = useState(() => {
+    const defaultFilters = { success: 'all', email: '' };
+    if (typeof window !== 'undefined' && isRefresh) {
+      try {
+        const saved = sessionStorage.getItem(FILTER_STORAGE_KEY);
+        return saved ? JSON.parse(saved) : defaultFilters;
+      } catch (_) {
+        return defaultFilters;
+      }
+    }
+    return defaultFilters;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+    sessionStorage.setItem(DATE_STORAGE_KEY, JSON.stringify(dateRange));
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [filters, dateRange, pathname]);
+
+  // Temporary states for FilterDrawer
+  const [tempDateRange, setTempDateRange] = useState({ start: '', end: '' });
+  const [tempFilters, setTempFilters] = useState({
     success: 'all',
     email: '',
   });
 
+  const syncTempFilters = () => {
+    setTempDateRange({ ...dateRange });
+    setTempFilters({ ...filters });
+  };
+
   const fetchData = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      // Base params (dates, filters)
+      // Fetch everything initially without baseParams filters
       const baseParams = {};
-      if (dateRange.start) baseParams.startDate = new Date(dateRange.start).toISOString();
-      if (dateRange.end) baseParams.endDate = new Date(dateRange.end).toISOString();
-      if (filters.success !== 'all') baseParams.success = filters.success === 'true';
 
       // 1. Fetch Staff List
       // We need userService dynamically or imported at top.
@@ -72,9 +125,35 @@ export default function DealerSessionManagementView() {
       else if (staffResponse?.users && Array.isArray(staffResponse.users))
         staffList = staffResponse.users;
 
+      // --- FILTER STAFF ONLY (Exclude other Managers/Admins) ---
+      const filteredStaff = staffList.filter((s) => {
+        const roleName = (s.role?.name || s.role || '').toLowerCase();
+        return roleName !== 'super_admin' && roleName !== 'dealer_manager';
+      });
+
+      // --- BUILD USER MAP FOR ATTRIBUTION ---
+      const userMapping = {};
+      // Add self
+      userMapping[user.id] = {
+        name:
+          user.first_name && user.last_name
+            ? `${user.first_name} ${user.last_name}`
+            : user.userName || user.name || user.email,
+        role: 'dealer_manager',
+        email: user.email,
+      };
+      // Add staff
+      filteredStaff.forEach((s) => {
+        userMapping[s.id] = {
+          name: s.first_name && s.last_name ? `${s.first_name} ${s.last_name}` : s.name || s.email,
+          role: s.role?.name || s.role || 'staff',
+          email: s.email,
+        };
+      });
+
       // 2. Prepare list of User IDs to fetch (Self + Staff)
-      const userIds = [user.id, ...staffList.map((s) => s.id)];
-      const uniqueUserIds = [...new Set(userIds)]; // specific user might be in staff list too
+      const userIds = Object.keys(userMapping);
+      const uniqueUserIds = [...new Set(userIds)];
 
       console.log('Fetching history for users:', uniqueUserIds);
 
@@ -90,7 +169,10 @@ export default function DealerSessionManagementView() {
 
       // 4. Aggregate Results
       let combinedSessions = [];
-      responses.forEach((response) => {
+      responses.forEach((response, index) => {
+        const currentUserId = uniqueUserIds[index];
+        const userInfo = userMapping[currentUserId];
+
         let list = [];
         if (Array.isArray(response)) list = response;
         else if (response?.data && Array.isArray(response.data)) list = response.data;
@@ -99,25 +181,20 @@ export default function DealerSessionManagementView() {
         else if (response?.login_history && Array.isArray(response.login_history))
           list = response.login_history;
 
-        combinedSessions = [...combinedSessions, ...list];
+        // Enrich logs with accurate info from our userMapping
+        const mapped = list.map((item) => ({
+          ...item,
+          userName: userInfo.name,
+          userRole: userInfo.role,
+          email: userInfo.email,
+          userId: currentUserId,
+        }));
+
+        combinedSessions = [...combinedSessions, ...mapped];
       });
 
-      // 5. Apply Client-Side Filters (Email) & Sort
-      // Backend might filtered by email for the specific user call if we passed it,
-      // but since we search across ALL users, better to filter combined list if searching a generic term.
-      // Actually, if we pass `email` param to backend, it searches for THAT user's email.
-      // Creating a "search anywhere" experience:
-
+      // Don't apply filters here since we are moving this to a useMemo client-side evaluation
       let finalSessionList = combinedSessions;
-
-      if (filters.email) {
-        const searchLower = filters.email.toLowerCase();
-        finalSessionList = finalSessionList.filter(
-          (log) =>
-            (log.email || '').toLowerCase().includes(searchLower) ||
-            (log.userName || log.user_name || '').toLowerCase().includes(searchLower)
-        );
-      }
 
       // Sort by date desc
       finalSessionList.sort((a, b) => {
@@ -126,21 +203,7 @@ export default function DealerSessionManagementView() {
         return dateB - dateA;
       });
 
-      const total = finalSessionList.length;
-      const successCount = finalSessionList.filter(
-        (l) => l.success === true || l.success === 1 || l.success === '1'
-      ).length;
-      const uniqueIps = new Set(
-        finalSessionList.map((l) => l.ipAddress || l.ip_address || 'unknown')
-      ).size;
-
       setSessions(finalSessionList);
-      setStats({
-        total_attempts: total,
-        successful_logins: successCount,
-        failed_logins: total - successCount,
-        unique_ips: uniqueIps,
-      });
     } catch (error) {
       console.error('Failed to load aggregated login logs', error);
       Swal.fire({
@@ -152,15 +215,121 @@ export default function DealerSessionManagementView() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters, dateRange, user]);
+  }, [user]); // Removed filters and dateRange from dependency array so it only fetches on mount
 
   useEffect(() => {
     if (user) fetchData();
   }, [fetchData, user]);
 
+  // Client-side filtering logic
+  const filteredSessions = React.useMemo(() => {
+    let result = sessions;
+
+    // Filter by Date Range
+    if (dateRange.start) {
+      const start = new Date(dateRange.start).getTime();
+      result = result.filter((session) => {
+        const time = new Date(session.createdAt || session.created_at).getTime();
+        return time >= start;
+      });
+    }
+    if (dateRange.end) {
+      const end = new Date(dateRange.end).getTime();
+      result = result.filter((session) => {
+        const time = new Date(session.createdAt || session.created_at).getTime();
+        return time <= end;
+      });
+    }
+
+    // Filter by Success Status
+    if (filters.success !== 'all') {
+      const filterVal = filters.success; // 'success' or 'failed'
+      result = result.filter((session) => {
+        const isSuccess =
+          session.success === true ||
+          session.success === 1 ||
+          session.success === '1' ||
+          session.success === 'true';
+        return filterVal === 'success' ? isSuccess : !isSuccess;
+      });
+    }
+
+    // Filter by Email Search
+    if (filters.email) {
+      const searchTerm = filters.email.toLowerCase();
+      result = result.filter((session) => {
+        const email = (session.email || '').toLowerCase();
+        const userName = (session.userName || session.user_name || '').toLowerCase();
+        return email.includes(searchTerm) || userName.includes(searchTerm);
+      });
+    }
+
+    return result;
+  }, [sessions, dateRange, filters.success, filters.email]);
+
+  // Recalculate stats whenever filtered results change
+  useEffect(() => {
+    const total = filteredSessions.length;
+    const successCount = filteredSessions.filter(
+      (l) => l.success === true || l.success === 1 || l.success === '1' || l.success === 'true'
+    ).length;
+    const uniqueIps = new Set(filteredSessions.map((l) => l.ipAddress || l.ip_address || 'unknown'))
+      .size;
+
+    setStats({
+      total_attempts: total,
+      successful_logins: successCount,
+      failed_logins: total - successCount,
+      unique_ips: uniqueIps,
+    });
+  }, [filteredSessions]);
+
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      const userId = viewingSession?.userId || viewingSession?.user_id;
+      if (userId) {
+        setIsUserLoading(true);
+        try {
+          const res = await userService.getUserById(userId);
+          setUserDetails(res.data || res);
+        } catch (error) {
+          console.error('Failed to fetch user details', error);
+          setUserDetails(null);
+        } finally {
+          setIsUserLoading(false);
+        }
+      } else {
+        setUserDetails(null);
+      }
+    };
+
+    fetchUserDetails();
+  }, [viewingSession]);
+
+  const handleRemoveFilter = (key) => {
+    if (key === 'startDate' || key === 'endDate') {
+      setDateRange((prev) => ({ ...prev, [key === 'startDate' ? 'start' : 'end']: '' }));
+    } else {
+      setFilters((prev) => ({
+        ...prev,
+        [key === 'successStatus' ? 'success' : key]: key === 'successStatus' ? 'all' : '',
+      }));
+    }
+  };
+
   const resetFilters = () => {
-    setDateRange({ start: '', end: '' });
-    setFilters({ success: 'all', email: '' });
+    const resetDate = { start: '', end: '' };
+    const resetFilt = { success: 'all', email: '' };
+    setDateRange(resetDate);
+    setFilters(resetFilt);
+    setTempDateRange(resetDate);
+    setTempFilters(resetFilt);
+  };
+
+  const handleApplyFilters = () => {
+    setFilters(tempFilters);
+    setDateRange(tempDateRange);
+    setIsFilterOpen(false);
   };
 
   return (
@@ -205,10 +374,7 @@ export default function DealerSessionManagementView() {
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
         onReset={resetFilters}
-        onApply={() => {
-          setIsFilterOpen(false);
-          fetchData();
-        }}
+        onApply={handleApplyFilters}
       >
         <div className="space-y-6">
           <div className="space-y-3">
@@ -217,13 +383,13 @@ export default function DealerSessionManagementView() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <CustomDateTimePicker
-                value={dateRange.start}
-                onChange={(val) => setDateRange((prev) => ({ ...prev, start: val }))}
+                value={tempDateRange.start}
+                onChange={(val) => setTempDateRange((prev) => ({ ...prev, start: val }))}
                 placeholder="Select start date"
               />
               <CustomDateTimePicker
-                value={dateRange.end}
-                onChange={(val) => setDateRange((prev) => ({ ...prev, end: val }))}
+                value={tempDateRange.end}
+                onChange={(val) => setTempDateRange((prev) => ({ ...prev, end: val }))}
                 placeholder="Select end date"
               />
             </div>
@@ -233,26 +399,28 @@ export default function DealerSessionManagementView() {
             <h3 className="text-sm font-semibold text-[rgb(var(--color-text))] flex items-center gap-2">
               <ShieldAlert size={16} /> Status
             </h3>
-            <select
-              value={filters.success}
-              onChange={(e) => setFilters((prev) => ({ ...prev, success: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-xl border bg-[rgb(var(--color-surface))]"
-            >
-              <option value="all">All Attempts</option>
-              <option value="true">Success</option>
-              <option value="false">Failed</option>
-            </select>
+            <CustomSelect
+              value={tempFilters.success}
+              onChange={(e) => setTempFilters((prev) => ({ ...prev, success: e.target.value }))}
+              options={[
+                { value: 'all', label: 'Select Status' },
+                { value: 'success', label: 'Success' },
+                { value: 'failed', label: 'Failed' },
+              ]}
+              placeholder="Select Status"
+              className="w-full"
+            />
           </div>
 
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-[rgb(var(--color-text))] flex items-center gap-2">
-              <User size={16} /> Email Search
+              <User size={16} /> Find by email
             </h3>
             <input
               type="text"
               placeholder="Search by email..."
-              value={filters.email}
-              onChange={(e) => setFilters((prev) => ({ ...prev, email: e.target.value }))}
+              value={tempFilters.email}
+              onChange={(e) => setTempFilters((prev) => ({ ...prev, email: e.target.value }))}
               className="w-full px-3 py-2.5 rounded-xl border bg-[rgb(var(--color-surface))]"
             />
           </div>
@@ -260,12 +428,36 @@ export default function DealerSessionManagementView() {
       </FilterDrawer>
 
       <DataTable
-        data={sessions}
+        data={filteredSessions}
         searchKeys={['userName', 'user_name', 'email', 'ipAddress', 'ip_address']}
+        searchPlaceholder="Search sessions by user, email, or IP..."
+        highlightId={highlightId}
         itemsPerPage={preferences.items_per_page || 10}
+        persistenceKey="dealer-sessions"
         loading={isLoading}
-        onFilterClick={() => setIsFilterOpen(true)}
+        onFilterClick={() => {
+          syncTempFilters();
+          setIsFilterOpen(true);
+        }}
         onClearFilters={resetFilters}
+        onRemoveExternalFilter={handleRemoveFilter}
+        hideFilterDropdowns={true}
+        externalFilters={{
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+          successStatus: filters.success !== 'all' ? filters.success : '',
+          email: filters.email,
+        }}
+        filterOptions={[
+          {
+            key: 'Status',
+            label: 'Status',
+            options: [
+              { value: 'success', label: 'Success' },
+              { value: 'failed', label: 'Failed' },
+            ],
+          },
+        ]}
         showClearFilter={
           filters.success !== 'all' ||
           filters.email !== '' ||
@@ -275,19 +467,29 @@ export default function DealerSessionManagementView() {
         columns={[
           {
             header: 'User',
+            sortable: true,
+            sortKey: (row) => row.userName || row.user_name || row.email || '',
             accessor: (row) => (
               <div>
                 <p className="font-semibold">
-                  {row.userName || row.user_name
-                    ? row.userName || row.user_name
-                    : row.email
-                      ? row.email.split('@')[0]
-                      : 'Unknown'}
+                  {row.firstName || row.first_name || row.lastName || row.last_name
+                    ? `${row.firstName || row.first_name || ''} ${row.lastName || row.last_name || ''}`.trim()
+                    : row.userName ||
+                      row.user_name ||
+                      (row.email ? row.email.split('@')[0] : 'Unknown')}
                 </p>
                 <p className="text-xs text-muted-foreground">{row.email}</p>
               </div>
             ),
           },
+          // {
+          //     header: 'Role',
+          //     accessor: (row) => (
+          //         <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-100 uppercase font-bold tracking-wider">
+          //             {(row.userRole || 'User').replace('_', ' ')}
+          //         </span>
+          //     )
+          // },
           {
             header: 'Status',
             type: 'badge',
@@ -296,10 +498,13 @@ export default function DealerSessionManagementView() {
               green: ['Success'],
               red: ['Failed'],
             },
+            sortable: true,
           },
           {
             header: 'Severity',
             type: 'badge',
+            sortable: true,
+            sortKey: 'success',
             accessor: (row) => (row.success ? 'Info' : 'Warning'),
             config: {
               blue: ['Info'],
@@ -307,6 +512,22 @@ export default function DealerSessionManagementView() {
             },
           },
           { header: 'IP Address', accessor: (row) => row.ipAddress || row.ip_address },
+          {
+            header: 'Location',
+            sortable: true,
+            sortKey: (row) => {
+              const city = row.city || row.location?.city || '';
+              const country = row.country || row.location?.country || '';
+              return `${city}, ${country}`;
+            },
+            accessor: (row) => {
+              const city = row.city || row.location?.city;
+              const country = row.country || row.location?.country;
+              if (city && country) return `${city}, ${country}`;
+              return city || country || '-';
+            },
+            className: 'text-xs italic',
+          },
           {
             header: 'Time',
             accessor: (row) =>
@@ -334,26 +555,31 @@ export default function DealerSessionManagementView() {
           title="Session Detail"
           maxWidth="max-w-xl"
           showActivityTab={false}
+          showAvatar={false}
+          showStatusBadge={false}
           statusMap={{
             success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
             failed: 'bg-red-50 text-red-700 border-red-200',
           }}
           data={{
             ...viewingSession,
-            name:
-              viewingSession.userName || viewingSession.user_name
-                ? viewingSession.userName || viewingSession.user_name
-                : viewingSession.email
-                  ? viewingSession.email.split('@')[0]
-                  : 'Unknown',
+            name: userDetails
+              ? `${userDetails.firstName || userDetails.first_name || ''} ${userDetails.lastName || userDetails.last_name || ''}`.trim() ||
+                userDetails.userName ||
+                userDetails.user_name ||
+                (userDetails.email ? userDetails.email.split('@')[0] : 'Unknown')
+              : viewingSession.firstName ||
+                  viewingSession.first_name ||
+                  viewingSession.lastName ||
+                  viewingSession.last_name
+                ? `${viewingSession.firstName || viewingSession.first_name || ''} ${viewingSession.lastName || viewingSession.last_name || ''}`.trim()
+                : viewingSession.userName ||
+                  viewingSession.user_name ||
+                  (viewingSession.email ? viewingSession.email.split('@')[0] : 'Unknown'),
             id: viewingSession.id || viewingSession.row_id || '-',
-            joinedDate: viewingSession.createdAt || viewingSession.created_at,
-            status:
-              viewingSession.success === 1 ||
-              viewingSession.success === true ||
-              viewingSession.success === 'true'
-                ? 'Success'
-                : 'Failed',
+            joinedDate:
+              userDetails?.created_at || viewingSession.createdAt || viewingSession.created_at,
+            // status: (viewingSession.success === 1 || viewingSession.success === true || viewingSession.success === 'true') ? 'Success' : 'Failed',
             formatted_status: (
               <span
                 className={`px-2 py-0.5 rounded text-xs font-semibold border ${
@@ -375,25 +601,53 @@ export default function DealerSessionManagementView() {
             formatted_ip: viewingSession.ipAddress || viewingSession.ip_address || '-',
             formatted_agent: (
               <div
-                className="text-xs text-muted-foreground break-all"
+                className="text-[10px] text-muted-foreground break-all opacity-70 mt-1"
                 title={viewingSession.userAgent || viewingSession.user_agent}
               >
                 {viewingSession.userAgent || viewingSession.user_agent || '-'}
               </div>
             ),
             formatted_email: viewingSession.email || '-',
+            formatted_location: (() => {
+              const loc = viewingSession.location;
+              if (typeof loc === 'string') return loc;
+              if (loc && typeof loc === 'object') {
+                const parts = [loc.area, loc.city, loc.state, loc.country].filter(Boolean);
+                return parts.length > 0 ? parts.join(', ') : '-';
+              }
+              return '-';
+            })(),
+            formatted_browser: viewingSession.browser || '-',
+            formatted_isp: viewingSession.isp || viewingSession.location?.isp || '-',
+            formatted_coordinates: viewingSession.location?.lat
+              ? `${viewingSession.location.lat}, ${viewingSession.location.lng}`
+              : '-',
           }}
           sections={[
             {
               title: 'Session Info',
               icon: Lock,
               fields: [
-                { label: 'User Name', key: 'name' },
-                { label: 'Email', key: 'formatted_email' },
+                { label: 'Action', key: 'action' },
                 { label: 'Status', key: 'formatted_status' },
-                { label: 'IP Address', key: 'formatted_ip' },
-                { label: 'User Agent', key: 'formatted_agent' },
                 { label: 'Timestamp', key: 'formatted_time' },
+              ],
+            },
+            {
+              title: 'Network & Device',
+              icon: ShieldAlert,
+              fields: [
+                { label: 'IP Address', key: 'formatted_ip' },
+                { label: 'Browser', key: 'formatted_browser' },
+              ],
+            },
+            {
+              title: 'Location Details',
+              icon: Globe,
+              fields: [
+                // { label: "ISP / Network", key: "formatted_isp" },
+                { label: 'Location', key: 'formatted_location' },
+                { label: 'Coordinates', key: 'formatted_coordinates' },
               ],
             },
           ]}

@@ -4,55 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global Scrollbar Styles */
-@supports (scrollbar-width: thin) {
-  :root {
-    scrollbar-color: #1a1a1a transparent;
-    scrollbar-width: thin;
-  }
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c0c0c0;
-
-  /* Light gray by default */
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-primary));
-
-  /* Lime Green on hover */
-  border: 0;
-}
-
 @layer utilities {
-  /* Utility for specific containers if needed */
-
-  /* Utility for specific containers if needed */
-
-  /* Utility for specific containers if needed */
-  @supports (scrollbar-width: thin) {
-    .custom-scrollbar {
-      scrollbar-width: thin;
-      scrollbar-color: rgb(var(--color-text-muted) / 30%) transparent;
-    }
-  }
-
   .custom-scrollbar::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -60,17 +15,37 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgb(var(--color-text-muted) / 30%);
+    background-color: rgb(var(--color-border));
     border-radius: 9999px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgb(var(--color-text-muted) / 50%);
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--color-text-muted) / 50%);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--color-border));
+    border-radius: 9999px;
   }
 
   .scrollbar-hide {
     -ms-overflow-style: none;
-    scrollbar-width: none;
+  }
+
+  @supports (scrollbar-width: none) {
+    .scrollbar-hide {
+      scrollbar-width: none;
+    }
   }
 
   .scrollbar-hide::-webkit-scrollbar {
@@ -133,4 +108,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
   color: rgb(var(--color-text));
   min-height: 100vh;
+}
+
+/* Override browser autofill styles */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px rgb(var(--color-surface)) inset !important;
+  -webkit-text-fill-color: rgb(var(--color-text)) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Dark mode autofill overrides */
+[data-theme='dark'] input:-webkit-autofill,
+[data-theme='dark'] input:-webkit-autofill:hover,
+[data-theme='dark'] input:-webkit-autofill:focus,
+[data-theme='dark'] input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px rgb(var(--color-surface)) inset !important;
+  -webkit-text-fill-color: rgb(var(--color-text)) !important;
 }

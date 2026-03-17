@@ -1,147 +1,162 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
-  BarChart as BarIcon,
   PieChart as PieIcon,
   TrendingUp,
   Download,
   ChevronDown,
   FileText,
-  Calendar as CalendarIcon,
-  Filter,
-  Users,
-  ArrowUpRight,
-  ArrowDownRight,
-  Clock,
-  LayoutDashboard as AreaIcon,
+  AreaChart as AreaIcon,
   DollarSign,
   ShieldCheck,
 } from 'lucide-react';
 import {
-  BarChart,
+  ComposedChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  AreaChart,
   Area,
+  Legend,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
 import Swal from 'sweetalert2';
 import analyticsService from '@/services/analyticsService';
-import userService from '@/services/userService';
+import StatCard from '@/components/common/StatCard';
 import Skeleton from '@/components/common/Skeleton';
 import PageHeader from '@/components/common/PageHeader';
 import DataTable from '@/components/common/DataTable';
 import { usePreference } from '@/context/PreferenceContext';
-import { formatDate } from '@/utils/i18n';
+import { canExportReports } from '@/utils/permissionUtils';
 
 export default function DealerReportView() {
+  const REPORT_DATE_RANGE_KEY = 'dealer_report_date_range';
+
   const { preferences } = usePreference();
   const { user } = useAuth();
-  const [dateRange, setDateRange] = useState('all');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
+  const pathname = usePathname();
+  const isRefresh = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [dateRange, setDateRange] = useState(() => {
+    if (typeof window !== 'undefined' && isRefresh) {
+      return sessionStorage.getItem(REPORT_DATE_RANGE_KEY) || 'all';
+    }
+    return 'all';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(REPORT_DATE_RANGE_KEY, dateRange);
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [dateRange, pathname]);
+
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (highlightId) {
+      setDateRange('all');
+      setSearchTerm('');
+    }
+  }, [highlightId]);
   const [isLoading, setIsLoading] = useState(true);
   const [performanceData, setPerformanceData] = useState(null);
-  const [dealershipId, setDealershipId] = useState(
-    user?.dealership_id ||
-      user?.roleDetails?.dealership_id ||
-      user?.dealer_id ||
-      user?.dealership?.id ||
-      user?.dealership
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const canExport = canExportReports(user);
+
+  // API accepts: period, start_date, end_date (snake_case only)
+  // Note: period overrides start_date/end_date per API docs
+  const calculateParams = useCallback(
+    (rangeValue) => {
+      const dealershipId =
+        user?.dealership_id || (user?.roleDetails && user?.roleDetails.dealership_id);
+      const params = {
+        period: rangeValue,
+        ...(dealershipId && { dealership_id: dealershipId }),
+      };
+
+      if (rangeValue !== 'all') {
+        const end = new Date();
+        const start = new Date();
+        const daysMap = { '7days': 7, '30days': 30, '90days': 90 };
+        const days = daysMap[rangeValue] || 30;
+        start.setDate(end.getDate() - days);
+
+        const toDateStr = (d) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        params.start_date = toDateStr(start);
+        params.end_date = toDateStr(end);
+      }
+
+      return params;
+    },
+    [user]
   );
 
-  const calculateParams = useCallback((rangeValue) => {
-    const params = {
-      period: rangeValue,
-    };
-
-    if (rangeValue !== 'all') {
-      const end = new Date();
-      const start = new Date();
-      const daysMap = { '7days': 7, '30days': 30, '90days': 90 };
-      const days = daysMap[rangeValue] || 30;
-
-      start.setDate(end.getDate() - days);
-
-      const toDateStr = (d) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-      params.start_date = toDateStr(start);
-      params.end_date = toDateStr(end);
-    }
-
-    return params;
-  }, []);
-
-  const fetchReportData = React.useCallback(async () => {
+  const fetchReportData = useCallback(async () => {
     try {
       setIsLoading(true);
       const params = calculateParams(dateRange);
 
-      console.log('📅 [Dealer Report] Fetching analytics with params:', params);
+      // Single role-scoped endpoint – backend returns data for the
+      // logged-in Dealer Manager's dealership automatically.
+      const res = await analyticsService.getDealerPerformanceRoleBased(params);
+      const raw = res?.data || res;
 
-      // Fetch performance analytics (now derived solely from performance endpoint)
-      const response = await analyticsService.getDealerPerformanceRoleBased(params);
-      const data = response?.data || response || {};
+      const perf = raw?.performance || {};
+      const dailyTrends = raw?.daily_trends || [];
+      const managers = raw?.managers || [];
 
-      const performance = data.performance || {};
-      const managers = data.managers || [];
-      const daily_trends = data.daily_trends || [];
-
-      const metrics = {
-        total_revenue: Number(performance.total_revenue || 0),
-        total_quotes: Number(performance.total_quotes || 0),
-        approval_rate: Number(performance.approval_rate || performance.conversion_rate || 0),
-        avg_quote_amount: Number(performance.avg_quote_amount || 0),
-        response_time_avg_hours: Number(performance.avg_response_time_days || 0) * 24,
-        accepted_quotes: Number(performance.accepted_quotes || 0),
-        pending_quotes: Number(performance.pending_quotes || 0),
-        rejected_quotes: Number(performance.rejected_quotes || 0),
-      };
-
-      const formattedTrends = daily_trends
+      const formattedTrends = dailyTrends
         .map((item) => ({
-          date: item.date || item.day,
+          date: item.date,
+          revenue: Number(item.revenue || 0),
+          quote_count: Number(item.quote_count || 0),
+          accepted_count: Number(item.accepted_count || 0),
           name: item.date
             ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            : item.day,
-          revenue: Number(item.revenue || item.total_revenue || 0),
-          quote_count: Number(item.quote_count || item.quotes || 0),
+            : 'Unknown',
         }))
         .sort((a, b) => new Date(a.date) - new Date(b.date));
 
       setPerformanceData({
-        metrics,
-        daily_trend: formattedTrends,
-        managers: managers,
-        status_breakdown: {
-          approved: metrics.accepted_quotes,
-          pending: metrics.pending_quotes,
-          rejected: metrics.rejected_quotes,
+        metrics: {
+          total_revenue: Number(perf.total_revenue || 0),
+          total_quotes: Number(perf.total_quotes || 0),
+          accepted_quotes: Number(perf.accepted_quotes || 0),
+          pending_quotes: Number(perf.pending_quotes || 0),
+          rejected_quotes: Number(perf.rejected_quotes || 0),
+          avg_quote_amount: Number(perf.avg_quote_amount || 0),
+          approval_rate: Number(perf.approval_rate || perf.conversion_rate || 0),
+          response_time_avg_hours: Number(perf.avg_response_time_days || 0) * 24,
         },
-        comparison: {
-          vs_last_period: {
-            revenue_growth: data.monthly_growth || data.growth || 0,
-            approval_rate_change: data.approval_rate_change || 0,
-            quote_growth: data.quote_growth || 0,
-          },
+        daily_trend: formattedTrends,
+        managers,
+        status_breakdown: {
+          approved: Number(perf.accepted_quotes || 0),
+          pending: Number(perf.pending_quotes || 0),
+          rejected: Number(perf.rejected_quotes || 0),
         },
       });
     } catch (error) {
-      console.error('❌ [Dealer Report] Failed to load report data:', error);
+      console.error('❌ [Dealer Report] Failed to fetch performance data:', error);
       Swal.fire({
         icon: 'error',
-        title: 'Data Load Failed',
-        text: error.response?.data?.message || 'Could not fetch analytics data.',
+        title: 'Failed to Load Report',
+        text: 'Could not load dealership performance data.',
         confirmButtonColor: 'rgb(var(--color-primary))',
       });
     } finally {
@@ -150,54 +165,29 @@ export default function DealerReportView() {
   }, [dateRange, calculateParams]);
 
   useEffect(() => {
-    const resolveIdAndFetch = async () => {
-      let currentId = dealershipId;
+    fetchReportData();
+  }, [fetchReportData]);
 
-      if (!currentId && user?.id) {
-        try {
-          const profile = await userService.getMyProfile();
-          currentId = profile.dealership_id || profile.dealer_id || profile.dealership?.id;
-          if (currentId) {
-            setDealershipId(currentId);
-            const updatedUser = { ...user, dealership_id: currentId };
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-          }
-        } catch (err) {
-          console.error('Failed to resolve dealership ID from profile', err);
-        }
-      }
-
-      if (currentId) {
-        fetchReportData();
-      } else {
-        setIsLoading(false);
-      }
-    };
-
-    resolveIdAndFetch();
-  }, [user, dealershipId, fetchReportData]);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!isExportOpen) return;
+    const handleClickOutside = () => setIsExportOpen(false);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [isExportOpen]);
 
   const handleExport = async (format) => {
+    if (!canExport) {
+      Swal.fire('Access Denied', "You don't have permission to export reports.", 'error');
+      return;
+    }
     try {
       const params = calculateParams(dateRange);
-
       if (format === 'csv') {
-        await analyticsService.exportDealerCSV({
-          ...params,
-          type: 'quotes',
-        });
+        await analyticsService.exportDealerCSV({ ...params, type: 'quotes' });
       } else if (format === 'excel') {
-        await analyticsService.exportDealerExcel({
-          ...params,
-          type: 'quotes',
-        });
-      } else {
-        await analyticsService.exportAnalyticsData('performance', format, {
-          dealership_id: dealershipId,
-          ...params,
-        });
+        await analyticsService.exportDealerExcel({ ...params, type: 'quotes' });
       }
-
       Swal.fire({
         toast: true,
         position: 'top-end',
@@ -212,15 +202,14 @@ export default function DealerReportView() {
   };
 
   const metrics = performanceData?.metrics || {};
-  const dailyPerformance = performanceData?.daily_trend || performanceData?.daily_performance || [];
-  const comparison = performanceData?.comparison?.vs_last_period || {};
+  const dailyPerformance = performanceData?.daily_trend || [];
   const statusBreakdown = performanceData?.status_breakdown || {};
   const visibleManagers = performanceData?.managers || [];
 
   const statusData = [
     {
-      name: 'Approved',
-      value: metrics.approved_quotes || statusBreakdown.approved || 0,
+      name: 'Accepted',
+      value: metrics.accepted_quotes || statusBreakdown.approved || 0,
       color: '#10b981',
     },
     {
@@ -235,41 +224,17 @@ export default function DealerReportView() {
     },
   ].filter((item) => item.value > 0);
 
-  const StatCardStyled = ({ title, value, subtext, trend, icon: Icon, color }) => (
-    <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-start mb-4">
-        <div className={`p-2.5 rounded-xl bg-${color}-50 text-${color}-600`}>
-          <Icon size={20} />
-        </div>
-        {trend !== undefined && (
-          <div
-            className={`flex items-center gap-1 text-xs font-bold ${trend >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
-          >
-            {trend >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-            {Math.abs(trend)}%
-          </div>
-        )}
-      </div>
-      <div>
-        <p className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
-          {title}
-        </p>
-        <h3 className="text-2xl font-extrabold text-[rgb(var(--color-text))] mt-1">
-          {isLoading ? <Skeleton width={100} /> : value}
-        </h3>
-        <p className="text-xs text-[rgb(var(--color-text-muted))] mt-1">{subtext}</p>
-      </div>
-    </div>
-  );
+  const periodLabel =
+    dateRange === 'all' ? 'All time' : `Last ${dateRange.replace('days', ' days')}`;
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       <PageHeader
         title="Dealership Performance"
-        subtitle={`Comprehensive analytics for ${user?.dealership?.name || 'your dealership'}`}
+        subtitle="Performance analytics for your dealership"
         actions={
           <>
-            {/* Premium Period Selector (Segmented Capsule) */}
+            {/* Period Selector */}
             <div className="flex items-center gap-1 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl p-1 shadow-sm">
               {[
                 { label: '7D', value: '7days' },
@@ -291,101 +256,164 @@ export default function DealerReportView() {
               ))}
             </div>
 
-            <div className="relative group">
-              <button className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-md">
-                <Download size={18} />
-                <span className="font-bold text-sm">Export</span>
-                <ChevronDown size={14} />
-              </button>
-              <div className="absolute right-0 top-full mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl overflow-hidden invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all z-20">
-                <div className="p-2 border-b border-[rgb(var(--color-border))] text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase">
-                  Dealership Data
-                </div>
+            {/* Export */}
+            <div className="relative">
+              {canExport ? (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsExportOpen(!isExportOpen);
+                    }}
+                    className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--color-primary-dark))] transition-colors shadow-md"
+                  >
+                    <Download size={18} />
+                    <span className="font-bold text-sm hidden sm:inline">Export</span>
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform duration-200 ${isExportOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  <div
+                    className={`absolute right-0 top-full mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl overflow-hidden transition-all z-50 ${isExportOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}
+                  >
+                    <div className="p-2 border-b border-[rgb(var(--color-border))] text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase">
+                      Export Report
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleExport('csv');
+                        setIsExportOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+                    >
+                      <FileText size={14} className="text-blue-500" /> CSV Report
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleExport('excel');
+                        setIsExportOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+                    >
+                      <FileText size={14} className="text-green-500" /> Excel Report
+                    </button>
+                  </div>
+                </>
+              ) : (
                 <button
-                  onClick={() => handleExport('csv')}
-                  className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
+                  disabled
+                  title="You don't have permission to export reports."
+                  className="flex items-center gap-2 bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded-lg shadow-md opacity-50 cursor-not-allowed"
                 >
-                  <FileText size={14} className="text-blue-500" /> CSV Report
+                  <Download size={18} />
+                  <span className="font-bold text-sm hidden sm:inline">Export</span>
+                  <ChevronDown size={14} />
                 </button>
-                <button
-                  onClick={() => handleExport('excel')}
-                  className="w-full text-left px-4 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] flex items-center gap-2"
-                >
-                  <FileText size={14} className="text-green-500" /> Excel Report
-                </button>
-              </div>
+              )}
             </div>
           </>
         }
+        stats={[
+          <StatCard
+            key="revenue"
+            title="Total Revenue"
+            value={
+              isLoading ? (
+                <Skeleton width={100} />
+              ) : (
+                new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: 'USD',
+                  notation: 'compact',
+                  maximumFractionDigits: 2,
+                }).format(Number(metrics.total_revenue || 0))
+              )
+            }
+            icon={<TrendingUp size={20} />}
+            helperText={periodLabel}
+            accent="#3b82f6"
+          />,
+          <StatCard
+            key="avg-quote"
+            title="Avg Quote Amount"
+            value={
+              isLoading ? (
+                <Skeleton width={100} />
+              ) : (
+                `$${Number(metrics.avg_quote_amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+              )
+            }
+            icon={<DollarSign size={20} />}
+            helperText="Per quote average"
+            accent="#6366f1"
+          />,
+          <StatCard
+            key="approval"
+            title="Approval Rate"
+            value={
+              isLoading ? (
+                <Skeleton width={100} />
+              ) : (
+                `${Number(metrics.approval_rate || 0).toFixed(1)}%`
+              )
+            }
+            icon={<ShieldCheck size={20} />}
+            helperText="Quotes converted"
+            accent="#10b981"
+          />,
+          <StatCard
+            key="quotes"
+            title="Total Quotes"
+            value={
+              isLoading ? <Skeleton width={100} /> : (metrics.total_quotes || 0).toLocaleString()
+            }
+            icon={<FileText size={20} />}
+            helperText={periodLabel}
+            accent="#f59e0b"
+          />,
+        ]}
       />
 
-      {/* KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCardStyled
-          title="Total Revenue"
-          value={`$${Number(metrics.total_revenue || 0).toLocaleString()}`}
-          subtext={
-            dateRange === 'all'
-              ? 'All time revenue'
-              : `Revenue last ${dateRange.replace('days', ' days')}`
-          }
-          trend={comparison.revenue_growth}
-          icon={TrendingUp}
-          color="blue"
-        />
-        <StatCardStyled
-          title="Avg Quote Amount"
-          value={`$${Number(metrics.avg_quote_amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-          subtext={
-            dateRange === 'all'
-              ? 'All time average'
-              : `Avg. last ${dateRange.replace('days', ' days')}`
-          }
-          icon={DollarSign}
-          color="indigo"
-        />
-        <StatCardStyled
-          title="Approval Rate"
-          value={`${Number(metrics.approval_rate || 0).toFixed(1)}%`}
-          subtext={
-            dateRange === 'all'
-              ? 'All time rate'
-              : `Rate last ${dateRange.replace('days', ' days')}`
-          }
-          trend={comparison.approval_rate_change}
-          icon={ShieldCheck}
-          color="emerald"
-        />
-        <StatCardStyled
-          title="Total Quotes"
-          value={(metrics.total_quotes || 0).toLocaleString()}
-          subtext={dateRange === 'all' ? 'All time' : `Last ${dateRange.replace('days', ' days')}`}
-          icon={FileText}
-          color="orange"
-        />
-      </div>
-
-      {/* Charts Section */}
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm min-h-[450px]">
-          <div className="flex justify-between items-center mb-8">
+        {/* Performance Insights – ComposedChart (Area + Bar) */}
+        <div className="lg:col-span-2 bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between mb-6">
             <h3 className="font-bold text-[rgb(var(--color-text))] flex items-center gap-2">
-              <AreaIcon size={18} className="text-[rgb(var(--color-primary))]" />
+              <AreaIcon size={18} className="text-blue-500" />
               Performance Insights
             </h3>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className="text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
+                  Revenue
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-wider">
+                  Quotes
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="h-[320px] w-full">
+          <div className="h-[300px] w-full mt-4">
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(var(--color-primary))]" />
               </div>
             ) : dailyPerformance.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyPerformance}>
+                <ComposedChart
+                  data={dailyPerformance}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
                   <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="rgb(var(--color-primary))" stopOpacity={0.1} />
-                      <stop offset="95%" stopColor="rgb(var(--color-primary))" stopOpacity={0} />
+                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
@@ -394,54 +422,77 @@ export default function DealerReportView() {
                     stroke="rgb(var(--color-border))"
                   />
                   <XAxis
-                    dataKey="date"
+                    dataKey="name"
                     stroke="rgb(var(--color-text-muted))"
                     fontSize={10}
-                    tickFormatter={(str) => {
-                      const d = new Date(str);
-                      return `${d.getMonth() + 1}/${d.getDate()}`;
-                    }}
+                    tickLine={false}
+                    axisLine={false}
                   />
                   <YAxis
+                    yAxisId="left"
+                    tickFormatter={(val) => `$${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`}
                     stroke="rgb(var(--color-text-muted))"
                     fontSize={10}
-                    tickFormatter={(val) => `$${val > 999 ? (val / 1000).toFixed(1) + 'k' : val}`}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    stroke="rgb(var(--color-text-muted))"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
                   />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: 'rgb(var(--color-surface))',
-                      border: '1px solid rgb(var(--color-border))',
+                      borderColor: 'rgb(var(--color-border))',
                       borderRadius: '12px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                     }}
-                    labelStyle={{ fontWeight: 'bold', marginBottom: '4px' }}
-                    formatter={(value) => [`$${value.toLocaleString()}`, 'Revenue']}
+                    itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                    cursor={{ fill: 'rgb(var(--color-background))', opacity: 0.4 }}
+                    formatter={(value, name) =>
+                      name === 'Revenue' ? [`$${value.toLocaleString()}`, name] : [value, name]
+                    }
+                  />
+                  <Bar
+                    yAxisId="right"
+                    dataKey="quote_count"
+                    name="Quotes"
+                    fill="#10b981"
+                    radius={[4, 4, 0, 0]}
+                    barSize={28}
                   />
                   <Area
+                    yAxisId="left"
                     type="monotone"
                     dataKey="revenue"
-                    stroke="rgb(var(--color-primary))"
+                    name="Revenue"
+                    stroke="#3b82f6"
                     strokeWidth={3}
                     fillOpacity={1}
-                    fill="url(#colorRevenue)"
+                    fill="url(#colorRev)"
+                    animationDuration={1500}
                   />
-                </AreaChart>
+                </ComposedChart>
               </ResponsiveContainer>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-[rgb(var(--color-text-muted))]">
-                <AreaIcon size={48} className="opacity-10 mb-2" />
-                <p className="text-sm font-bold">No data available for this period</p>
+                <TrendingUp size={48} className="opacity-10 mb-2" />
+                <p className="text-sm font-bold">No data for this period</p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm flex flex-col min-h-[450px]">
-          <h3 className="font-bold text-[rgb(var(--color-text))] flex items-center gap-2 mb-8">
+        {/* Status Distribution Pie */}
+        <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm flex flex-col min-h-[400px]">
+          <h3 className="font-bold text-[rgb(var(--color-text))] flex items-center gap-2 mb-6">
             <PieIcon size={18} className="text-purple-500" />
-            Status Distribution
+            Quote Distribution
           </h3>
-
           <div className="flex-1 flex flex-col justify-center">
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
@@ -449,18 +500,17 @@ export default function DealerReportView() {
               </div>
             ) : statusData.length > 0 ? (
               <>
-                <div className="h-[240px] w-full relative">
+                <div className="h-[250px] w-full relative">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={statusData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={70}
-                        outerRadius={95}
-                        paddingAngle={8}
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
                         dataKey="value"
-                        stroke="none"
                       >
                         {statusData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
@@ -469,46 +519,22 @@ export default function DealerReportView() {
                       <Tooltip
                         contentStyle={{
                           backgroundColor: 'rgb(var(--color-surface))',
-                          border: '1px solid rgb(var(--color-border))',
-                          borderRadius: '12px',
+                          borderColor: 'rgb(var(--color-border))',
+                          borderRadius: '8px',
                         }}
+                        itemStyle={{ color: 'rgb(var(--color-text))' }}
                       />
+                      <Legend verticalAlign="bottom" height={36} iconType="circle" />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-4xl font-black text-[rgb(var(--color-text))]">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
+                    <span className="text-3xl font-bold text-[rgb(var(--color-text))]">
                       {metrics.total_quotes || 0}
                     </span>
-                    <span className="text-xs text-[rgb(var(--color-text-muted))] uppercase tracking-tighter">
-                      Quotes Total
+                    <span className="text-xs text-[rgb(var(--color-text-muted))] uppercase tracking-wide">
+                      Total
                     </span>
                   </div>
-                </div>
-
-                <div className="mt-8 space-y-3">
-                  {statusData.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                        ></div>
-                        <span className="text-xs font-bold text-[rgb(var(--color-text))]">
-                          {item.name}
-                        </span>
-                      </div>
-                      <span className="text-xs font-black text-[rgb(var(--color-text))]">
-                        {item.value}{' '}
-                        <span className="text-[rgb(var(--color-text-muted))] font-medium">
-                          (
-                          {metrics.total_quotes
-                            ? Math.round((item.value / metrics.total_quotes) * 100)
-                            : 0}
-                          %)
-                        </span>
-                      </span>
-                    </div>
-                  ))}
                 </div>
               </>
             ) : (
@@ -521,14 +547,16 @@ export default function DealerReportView() {
         </div>
       </div>
 
-      {/* Manager Performance Section */}
+      {/* Staff Performance Table */}
       <DataTable
         title="Staff Performance"
         data={visibleManagers}
         itemsPerPage={preferences.items_per_page || 10}
+        persistenceKey="dealer-reports-staff"
+        hideFilterDropdowns={true}
         columns={[
           {
-            header: 'Manager',
+            header: 'Name',
             accessor: (row) => row.manager_name || 'Unknown',
             className: 'font-medium text-[rgb(var(--color-text))]',
             sortable: true,
@@ -537,6 +565,8 @@ export default function DealerReportView() {
           {
             header: 'Email',
             accessor: (row) => row.email || 'N/A',
+            sortable: true,
+            sortKey: 'email',
             className: 'text-[rgb(var(--color-text-muted))] text-xs',
           },
           {
@@ -547,7 +577,7 @@ export default function DealerReportView() {
             sortKey: 'quotes_created',
           },
           {
-            header: 'Total Revenue',
+            header: 'Revenue',
             sortable: true,
             sortKey: 'revenue_generated',
             accessor: (row) =>
@@ -555,51 +585,29 @@ export default function DealerReportView() {
             className: 'font-bold text-[rgb(var(--color-text))]',
           },
           {
+            header: 'Approval Rate',
+            accessor: (row) => `${Number(row.approval_rate || 0).toFixed(1)}%`,
+            sortable: true,
+            sortKey: 'approval_rate',
+            className: 'text-center text-[rgb(var(--color-text-muted))]',
+          },
+          {
             header: 'Status',
-            accessor: (row) => (
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${row.quotes_created > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}
-              >
-                {row.quotes_created > 0 ? 'Active' : 'No Activity'}
-              </span>
-            ),
+            type: 'badge',
+            config: {
+              green: ['Active'],
+              red: ['No Activity'],
+            },
+            accessor: (row) => (row.quotes_created > 0 ? 'Active' : 'No Activity'),
           },
         ]}
-        searchPlaceholder="Search by staff name..."
-        searchKey="manager_name"
+        searchPlaceholder="Search staff by name or email..."
+        highlightId={highlightId}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchKeys={['manager_name', 'email']}
         isLoading={isLoading}
       />
-
-      {/* Achievements Section */}
-      {performanceData?.achievements?.length > 0 && (
-        <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm">
-          <h3 className="font-bold text-[rgb(var(--color-text))] flex items-center gap-2 mb-6">
-            <ArrowUpRight size={18} className="text-amber-500" />
-            Key Achievements
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {performanceData.achievements.map((item, i) => (
-              <div
-                key={i}
-                className="flex gap-4 p-4 rounded-xl bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))]"
-              >
-                <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100 shadow-sm">
-                  <TrendingUp size={20} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-bold text-[rgb(var(--color-text))]">{item.title}</h4>
-                  <p className="text-xs text-[rgb(var(--color-text-muted))] mt-1 leading-relaxed">
-                    {item.description}
-                  </p>
-                  <p className="text-[10px] text-amber-600 font-bold mt-2 uppercase tracking-tight">
-                    {formatDate(item.earned_at)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

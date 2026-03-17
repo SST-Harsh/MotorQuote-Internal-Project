@@ -3,14 +3,11 @@ import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import dynamic from 'next/dynamic';
 
+import { canViewNotifications } from '@/utils/roleUtils';
+import AccessDenied from '@/components/common/AccessDenied';
+
 const SuperAdminNotifications = dynamic(
   () => import('@/components/views/notifications/SuperAdminNotifications'),
-  {
-    ssr: false,
-  }
-);
-const AdminNotifications = dynamic(
-  () => import('@/components/views/notifications/AdminNotifications'),
   {
     ssr: false,
   }
@@ -29,20 +26,38 @@ export default function NotificationsPage() {
     return <div className="p-8">Please log in to view notifications.</div>;
   }
 
-  // Role-based rendering controller
+  // Support staff and dealer roles can always view notifications
+  const role = user?.role;
+  const isAuthorizedRole = [
+    'super_admin',
+    'dealer',
+    'dealer_manager',
+    'dealer_admin',
+    'support_staff',
+    'staff',
+  ].includes(role);
+
+  // Check if user has permission to view notifications
+  const hasAccess = isAuthorizedRole || canViewNotifications(user);
+
+  if (!hasAccess) {
+    return (
+      <AccessDenied
+        message={`Access Denied: Role (${role}) does not have permission to view notifications.`}
+      />
+    );
+  }
+
   switch (user.role) {
     case 'super_admin':
       return <SuperAdminNotifications />;
-    case 'admin':
-      return <AdminNotifications />;
     case 'dealer':
     case 'dealer_manager':
+    case 'support_staff':
       return <DealerNotifications />;
     default:
       return (
-        <div className="p-8 text-center text-red-500">
-          Access Denied: Unknown Role ({user.role})
-        </div>
+        <AccessDenied message={`Access Denied: Role (${user.role}) does not have permission.`} />
       );
   }
 }

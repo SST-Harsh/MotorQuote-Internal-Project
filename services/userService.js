@@ -43,21 +43,10 @@ const userService = {
     }
   },
 
-  // Delete User (Soft Delete or Permanent)
-  deleteUser: async (id, permanent = false) => {
+  // Delete User (Soft Delete)
+  deleteUser: async (id) => {
     try {
-      const params = permanent ? { permanent: true } : {};
-      const response = await api.delete(`/users/${id}`, { params });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Update User Status (Active/Inactive/Suspended)
-  updateUserStatus: async (id, status) => {
-    try {
-      const response = await api.patch(`/users/${id}/status`, { status });
+      const response = await api.delete(`/users/${id}`);
       return response.data;
     } catch (error) {
       throw error;
@@ -143,8 +132,20 @@ const userService = {
 
   getMyProfile: async () => {
     try {
-      // Standardize to documented endpoint
-      const response = await api.get('/auth/me');
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const role = user?.role ? normalizeRole(user.role) : '';
+
+      // If dealer manager, use the new specific endpoint as per documentation
+      if (role === 'dealer_manager') {
+        const response = await api.get('/users/profile');
+        return response.data;
+      }
+
+      // For other roles, keep using the ID-based endpoint of legacy API
+      const id = user?.id;
+      if (!id) throw new Error('User ID not found in session');
+      const response = await api.get(`/users/${id}`);
       return response.data;
     } catch (error) {
       throw error;
@@ -162,8 +163,18 @@ const userService = {
 
   updateMyProfile: async (data) => {
     try {
-      // Standardize to documented endpoint for updating current user profile
-      const response = await api.put('/users/profile', data);
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const role = user?.role ? normalizeRole(user.role) : '';
+
+      if (role === 'dealer_manager') {
+        const response = await api.put('/users/profile', data);
+        return response.data;
+      }
+
+      // Legacy support or fallback
+      const id = user?.id;
+      const response = await api.put(id ? `/users/${id}` : '/users/profile', data);
       return response.data;
     } catch (error) {
       throw error;
@@ -199,7 +210,7 @@ const userService = {
 
   getProfileImage: async () => {
     try {
-      const response = await api.get('/auth/me'); // Get user profile which contains avatar
+      const response = await api.get('/users/profile');
       return response.data;
     } catch (error) {
       throw error;
@@ -208,8 +219,18 @@ const userService = {
 
   uploadProfileImage: async (file) => {
     try {
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const role = user?.role ? normalizeRole(user.role) : '';
+
       const formData = new FormData();
-      formData.append('profile_picture', file);
+
+      // Use role-specific field names if necessary
+      if (role === 'dealer_manager') {
+        formData.append('profile_picture', file); // New Snake Case for Dealers
+      } else {
+        formData.append('profilePicture', file); // Legacy Camel Case for others
+      }
 
       const response = await api.post('/users/profile/picture', formData, {
         headers: { 'Content-Type': undefined },
@@ -299,6 +320,67 @@ const userService = {
   getDealerStaffPerformance: async (id, params = {}) => {
     try {
       const response = await api.get(`/dealer/staff/${id}/performance`, { params });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ==========================================================
+  // USER SUSPENSION API (/users)
+  // ==========================================================
+
+  // Get all suspended users (Super Admin only)
+  // Note: Backend uses /users/suspended (without /api prefix)
+  // We call via the Next.js API route which proxies to backend
+  getSuspendedUsers: async (params = {}) => {
+    try {
+      // Use the Next.js API route which proxies to backend
+      const response = await api.get('/users/suspended', { params });
+      return response.data;
+    } catch (error) {
+      console.error('GET Suspended Users (singular) Error:', error.response?.status, error.message);
+      throw error;
+    }
+  },
+
+  // Suspend a user with reason (Super Admin only)
+  suspendUser: async (userId, reason) => {
+    try {
+      // Trying singular /user/
+      const response = await api.put(`/users/${userId}/suspend`, { reason });
+      return response.data;
+    } catch (error) {
+      console.error('Suspend User (singular) Error:', error.response?.status, error.message);
+      throw error;
+    }
+  },
+
+  // Restore a suspended user (Super Admin only)
+  restoreUser: async (userId) => {
+    try {
+      // Trying singular /user/
+      const response = await api.put(`/users/${userId}/restore`);
+      return response.data;
+    } catch (error) {
+      console.error('Restore User (singular) Error:', error.response?.status, error.message);
+      throw error;
+    }
+  },
+
+  // Individual User 2FA Management (Super Admin only)
+  enable2FA: async (userId) => {
+    try {
+      const response = await api.post(`/admin/users/${userId}/2fa/enable`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  disable2FA: async (userId) => {
+    try {
+      const response = await api.post(`/admin/users/${userId}/2fa/disable`);
       return response.data;
     } catch (error) {
       throw error;

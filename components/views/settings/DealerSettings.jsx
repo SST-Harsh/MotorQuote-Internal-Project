@@ -2,13 +2,13 @@
 import React from 'react';
 import AppearanceSettings from '../../settings/AppearanceSettings';
 import ProfileSettings from '../../settings/ProfileSettings';
-import SecuritySettings from '../../settings/SecuritySettings';
+// import SecuritySettings from "../../settings/SecuritySettings";
 import HelpSettings from '../../settings/HelpSettings';
 import UserPreferences from '../../settings/UserPreferences';
 
 import { useAuth } from '@/context/AuthContext';
-import DealerNotificationSettings from '../notifications/DealerNotificationSettings';
-import DealershipInfoSettings from './DealershipInfoSettings';
+// import DealerNotificationSettings from '../notifications/DealerNotificationSettings';
+// import DealershipInfoSettings from "./DealershipInfoSettings";
 import PageHeader from '@/components/common/PageHeader';
 
 export default function DealerSettings() {
@@ -25,9 +25,9 @@ export default function DealerSettings() {
         <AppearanceSettings />
         <ProfileSettings user={user} />
         <UserPreferences />
-        <SecuritySettings />
-        <DealerNotificationSettings />
-        <DealershipInfoSettings />
+        {/* <SecuritySettings /> */}
+        {/* <DealerNotificationSettings /> */}
+        {/* <DealershipInfoSettings /> */}
         <HelpSettings />
       </div>
     </div>

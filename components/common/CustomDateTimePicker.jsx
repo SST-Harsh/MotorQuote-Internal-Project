@@ -5,6 +5,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import dayjs from 'dayjs';
+import { getDateFormat } from '@/utils/i18n';
 
 const darkTheme = createTheme({
   palette: {
@@ -108,6 +109,7 @@ export default function CustomDateTimePicker({
     <ThemeProvider theme={isDark ? darkTheme : lightTheme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <DateTimePicker
+          format={`${getDateFormat()} hh:mm A`}
           value={value ? dayjs(value) : null}
           onChange={(newValue) => {
             onChange(newValue ? newValue.toISOString() : '');
@@ -125,7 +127,7 @@ export default function CustomDateTimePicker({
                 sx: {
                   height: '44px',
                   color: 'rgb(var(--color-text))',
-                  backgroundColor: 'rgb(var(--color-surface))', // Use standard surface color
+                  backgroundColor: 'rgb(var(--color-background))', // Match dropdowns and other inputs
                   borderRadius: '0.375rem',
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: error ? 'rgb(var(--color-error))' : 'rgb(var(--color-border))', // Use tailwind var

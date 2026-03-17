@@ -54,7 +54,19 @@ export default function PageHeader({
 
       {/* Stats Grid */}
       {stats && stats.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">{stats}</div>
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+            stats.length === 5
+              ? 'xl:grid-cols-5 lg:grid-cols-3'
+              : stats.length === 4
+                ? 'lg:grid-cols-4'
+                : stats.length === 3
+                  ? 'lg:grid-cols-3'
+                  : 'md:grid-cols-4'
+          }`}
+        >
+          {stats}
+        </div>
       )}
     </>
   );

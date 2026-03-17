@@ -195,7 +195,8 @@ const handle403Error = (error) => {
   const isSuspended =
     resData?.status === 'suspended' ||
     message.toLowerCase().includes('suspended') ||
-    message.toLowerCase().includes('account is inactive');
+    message.toLowerCase().includes('account is inactive') ||
+    message.toLowerCase().includes('user is not active');
 
   if (!isAuthRequest) {
     // Only show Access Denied if it's NOT a suspension

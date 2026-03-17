@@ -1,23 +1,44 @@
-/**
- * Internationalization Utilities
- * Provides formatting functions for dates, times, numbers, and currencies
- * based on user's locale preference
- */
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 /**
  * Get current locale from localStorage or default to 'en'
  */
-export const getCurrentLocale = () => {
-  if (typeof window === 'undefined') return 'en';
-  return localStorage.getItem('language') || 'en';
-};
+export const getCurrentLocale = () => 'en';
 
 /**
  * Get date format from localStorage or default
  */
 export const getDateFormat = () => {
   if (typeof window === 'undefined') return 'MM/DD/YYYY';
+  // Check both user_preferences object and individual key
+  const prefs = localStorage.getItem('user_preferences');
+  if (prefs) {
+    try {
+      const parsed = JSON.parse(prefs);
+      if (parsed.date_format) return parsed.date_format;
+    } catch (e) {}
+  }
   return localStorage.getItem('date_format') || 'MM/DD/YYYY';
+};
+
+/**
+ * Get current timezone from localStorage or default
+ */
+export const getTimezone = () => {
+  if (typeof window === 'undefined') return 'UTC';
+  const prefs = localStorage.getItem('user_preferences');
+  if (prefs) {
+    try {
+      const parsed = JSON.parse(prefs);
+      if (parsed.timezone) return parsed.timezone;
+    } catch (e) {}
+  }
+  return 'UTC';
 };
 
 /**
@@ -41,12 +62,6 @@ const getIntlOptionsFromFormat = (format) => {
  */
 const DATE_FORMATS = {
   en: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  es: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  ar: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  fr: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  de: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  hi: { day: '2-digit', month: '2-digit', year: 'numeric' },
-  gu: { day: '2-digit', month: '2-digit', year: 'numeric' },
 };
 
 /**
@@ -58,20 +73,13 @@ const DATE_FORMATS = {
 export const formatDate = (date, locale = null) => {
   if (!date) return '';
 
-  const currentLocale = locale || getCurrentLocale();
   const format = getDateFormat();
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const tz = getTimezone();
+  const dateObj = dayjs(date).tz(tz);
 
-  if (isNaN(dateObj.getTime())) return '';
+  if (!dateObj.isValid()) return '';
 
-  try {
-    // If it's a standard format we recognize, use simple string replacement or Intl with specific options
-    const options = getIntlOptionsFromFormat(format);
-    return new Intl.DateTimeFormat(currentLocale, options).format(dateObj);
-  } catch (error) {
-    console.error('Date formatting error:', error);
-    return dateObj.toLocaleDateString();
-  }
+  return dateObj.format(format);
 };
 
 /**
@@ -83,23 +91,14 @@ export const formatDate = (date, locale = null) => {
 export const formatDateTime = (date, locale = null) => {
   if (!date) return '';
 
-  const currentLocale = locale || getCurrentLocale();
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const tz = getTimezone();
+  const dateObj = dayjs(date).tz(tz);
+  if (!dateObj.isValid()) return '';
 
-  if (isNaN(dateObj.getTime())) return '';
-
-  try {
-    const format = getDateFormat();
-    const dateOptions = getIntlOptionsFromFormat(format);
-    return new Intl.DateTimeFormat(currentLocale, {
-      ...dateOptions,
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(dateObj);
-  } catch (error) {
-    console.error('DateTime formatting error:', error);
-    return dateObj.toLocaleString();
-  }
+  const format = getDateFormat();
+  // Add time for DateTime
+  const dateTimeFormat = `${format} hh:mm A`;
+  return dateObj.format(dateTimeFormat);
 };
 
 /**
@@ -111,7 +110,7 @@ export const formatDateTime = (date, locale = null) => {
 export const formatTime = (date, locale = null) => {
   if (!date) return '';
 
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
 
   if (isNaN(dateObj.getTime())) return '';
@@ -137,7 +136,7 @@ export const formatTime = (date, locale = null) => {
 export const formatNumber = (number, locale = null, decimals = 2) => {
   if (number === null || number === undefined) return '';
 
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const num = typeof number === 'string' ? parseFloat(number) : number;
 
   if (isNaN(num)) return '';
@@ -158,12 +157,6 @@ export const formatNumber = (number, locale = null, decimals = 2) => {
  */
 const CURRENCY_SYMBOLS = {
   en: { code: 'USD', symbol: '$' },
-  es: { code: 'EUR', symbol: '€' },
-  ar: { code: 'SAR', symbol: 'ر.س' },
-  fr: { code: 'EUR', symbol: '€' },
-  de: { code: 'EUR', symbol: '€' },
-  hi: { code: 'INR', symbol: '₹' },
-  gu: { code: 'INR', symbol: '₹' },
 };
 
 /**
@@ -176,12 +169,12 @@ const CURRENCY_SYMBOLS = {
 export const formatCurrency = (amount, locale = null, currencyCode = null) => {
   if (amount === null || amount === undefined) return '';
 
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const num = typeof amount === 'string' ? parseFloat(amount) : amount;
 
   if (isNaN(num)) return '';
 
-  const currency = currencyCode || CURRENCY_SYMBOLS[currentLocale]?.code || 'USD';
+  const currency = currencyCode || 'USD';
 
   try {
     return new Intl.NumberFormat(currentLocale, {
@@ -190,8 +183,7 @@ export const formatCurrency = (amount, locale = null, currencyCode = null) => {
     }).format(num);
   } catch (error) {
     console.error('Currency formatting error:', error);
-    const symbol = CURRENCY_SYMBOLS[currentLocale]?.symbol || '$';
-    return `${symbol}${num.toFixed(2)}`;
+    return `$${num.toFixed(2)}`;
   }
 };
 
@@ -203,15 +195,14 @@ export const formatCurrency = (amount, locale = null, currencyCode = null) => {
  */
 export const formatCompactCurrency = (amount, locale = null) => {
   if (amount === null || amount === undefined) return '';
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const num = typeof amount === 'string' ? parseFloat(amount) : amount;
   if (isNaN(num)) return '';
-  const currency = CURRENCY_SYMBOLS[currentLocale]?.code || 'USD';
 
   try {
     return new Intl.NumberFormat(currentLocale, {
       style: 'currency',
-      currency: currency,
+      currency: 'USD',
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(num);
@@ -228,7 +219,7 @@ export const formatCompactCurrency = (amount, locale = null) => {
  */
 export const formatCompactNumber = (value, locale = null) => {
   if (value === null || value === undefined) return '';
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '';
 
@@ -252,7 +243,7 @@ export const formatCompactNumber = (value, locale = null) => {
 export const formatPercentage = (value, locale = null, decimals = 1) => {
   if (value === null || value === undefined) return '';
 
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const num = typeof value === 'string' ? parseFloat(value) : value;
 
   if (isNaN(num)) return '';
@@ -278,7 +269,7 @@ export const formatPercentage = (value, locale = null, decimals = 1) => {
 export const formatRelativeTime = (date, locale = null) => {
   if (!date) return '';
 
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
 
   if (isNaN(dateObj.getTime())) return '';
@@ -307,7 +298,7 @@ export const formatRelativeTime = (date, locale = null) => {
  * Get locale-specific examples for documentation
  */
 export const getLocaleExamples = (locale = null) => {
-  const currentLocale = locale || getCurrentLocale();
+  const currentLocale = 'en';
   const now = new Date();
   const sampleAmount = 1234.56;
 
@@ -320,66 +311,4 @@ export const getLocaleExamples = (locale = null) => {
     percentage: formatPercentage(0.1556, currentLocale),
     relativeTime: formatRelativeTime(new Date(now - 7200000), currentLocale), // 2 hours ago
   };
-};
-
-/**
- * Translate user role
- * @param {string} role - Role string or key
- * @param {function} t - Translation function from useTranslation
- * @returns {string} Translated role
- */
-export const translateUserRole = (role, t) => {
-  if (!role) return '';
-  const r = String(role).toLowerCase().trim();
-  if (r === 'super_admin' || r === 'superadmin' || r === 'super admin')
-    return t('roles.super_admin');
-  if (r === 'admin') return t('roles.admin');
-  if (r === 'dealer_manager' || r === 'dealer manager') return t('roles.dealer_manager');
-  if (r === 'user') return t('roles.user');
-  if (r === 'admin_work' || r === 'admin work') return t('roles.admin_work');
-  // Fallback: capitalize
-  return role
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-};
-
-/**
- * Translate User Name (handles role-as-username)
- * @param {string} userName - The name to translate
- * @param {function} tCommon - Translation function (usually from common namespace)
- * @returns {string} Translated username or original
- */
-export const translateUserName = (userName, tCommon) => {
-  if (!userName) return 'Admin';
-
-  const name = String(userName).trim();
-
-  if (name.startsWith('common:roles.')) {
-    const roleKey = name.replace('common:roles.', 'roles.');
-    return tCommon(roleKey);
-  }
-
-  const roleMap = {
-    'super admin': 'roles.super_admin',
-    super: 'roles.super_admin',
-    admin: 'roles.admin',
-    'dealer manager': 'roles.dealer_manager',
-    dealer_manager: 'roles.dealer_manager',
-    'admin work': 'roles.admin_work',
-    'dealer work': 'roles.dealer_work',
-    'dealer worker': 'roles.dealer_work',
-    dealer: 'roles.dealer',
-    user: 'roles.user',
-    superadmin: 'roles.super_admin',
-  };
-
-  const lowerName = name.toLowerCase();
-  for (const [roleName, translationKey] of Object.entries(roleMap)) {
-    if (lowerName === roleName) {
-      return tCommon(translationKey);
-    }
-  }
-
-  return userName;
 };

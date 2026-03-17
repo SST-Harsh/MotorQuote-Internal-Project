@@ -20,29 +20,7 @@ import { useState, useEffect } from 'react';
 
 const FileDetailsModal = ({ isOpen, onClose, file }) => {
   // Hooks must be called before any early returns
-  const [imageUrl, setImageUrl] = useState(null);
-
-  useEffect(() => {
-    let isMounted = true;
-    let objectUrl = null;
-
-    if (isOpen && file && (file.type || file.mime_type || '').startsWith('image/') && file.id) {
-      fileService
-        .downloadFile(file.id)
-        .then((blob) => {
-          objectUrl = URL.createObjectURL(blob);
-          if (isMounted) setImageUrl(objectUrl);
-        })
-        .catch((error) => {
-          console.error('Details preview load failed:', error);
-        });
-    }
-
-    return () => {
-      isMounted = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [isOpen, file]);
+  // No preview needed as per user request
 
   if (!isOpen || !file) return null;
 
@@ -139,35 +117,17 @@ const FileDetailsModal = ({ isOpen, onClose, file }) => {
         {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
           {/* Preview Section */}
-          <div className="relative group mx-auto max-w-[200px] w-full aspect-square rounded-[2rem] bg-gradient-to-br from-[rgb(var(--color-background))] to-[rgb(var(--color-surface))] border-2 border-white shadow-xl overflow-hidden flex items-center justify-center mb-2">
-            {imageUrl ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={imageUrl}
-                alt="preview"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-              />
-            ) : (
-              <div className="text-center p-6">
-                <div className="mb-2 flex justify-center opacity-40 group-hover:scale-110 transition-transform duration-500">
-                  <FileIcon type={file.type || file.mime_type} className="w-16 h-16" />
-                </div>
-                <p className="text-[10px] font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-widest leading-tight">
-                  No Preview Available
-                </p>
-              </div>
-            )}
-            <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-
-          <div className="text-center mb-6">
+          <div className="flex flex-col items-center justify-center p-8 bg-[rgb(var(--color-background))]/20 rounded-3xl border border-dashed border-[rgb(var(--color-border))] mb-4">
+            <div className="p-4 bg-white rounded-2xl shadow-sm mb-4">
+              <FileIcon type={file.type || file.mime_type} className="w-12 h-12" />
+            </div>
             <h4
-              className="text-base font-bold text-[rgb(var(--color-text))] truncate px-4"
+              className="text-lg font-black text-[rgb(var(--color-text))] truncate max-w-full px-4"
               title={getFileName()}
             >
               {getFileName()}
             </h4>
-            <div className="flex items-center justify-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1">
               <span className="px-2 py-0.5 rounded-full bg-[rgb(var(--color-primary))]/10 text-[rgb(var(--color-primary))] text-[10px] font-bold uppercase tracking-wider">
                 {file.type || file.mime_type || 'Unknown'}
               </span>
@@ -193,9 +153,21 @@ const FileDetailsModal = ({ isOpen, onClose, file }) => {
               color="text-blue-500"
             />
             <DetailItem
+              icon={Shield}
+              label="Security Scan"
+              value={file.virus_scan_status || 'Clean'}
+              color={file.virus_scan_status === 'failed' ? 'text-red-500' : 'text-green-500'}
+            />
+            <DetailItem
+              icon={HardDrive}
+              label="Storage"
+              value={`${file.storage_provider || 'Local'} (${file.access_level || 'Private'})`}
+              color="text-gray-500"
+            />
+            <DetailItem
               icon={User}
               label="Owner"
-              value={file.user?.name || file.user?.email}
+              value={file.owner_name || file.user?.name || file.user?.email || 'System'}
               color="text-purple-500"
             />
             <DetailItem
@@ -204,12 +176,12 @@ const FileDetailsModal = ({ isOpen, onClose, file }) => {
               value={`Revision ${file.version_count || 1}`}
               color="text-[rgb(var(--color-success))]"
             />
-            {file.context && (
+            {(file.context_type || file.context) && (
               <div className="col-span-2">
                 <DetailItem
                   icon={LinkIcon}
                   label="Origin Context"
-                  value={`${file.context.charAt(0).toUpperCase() + file.context.slice(1)} • ${file.context_id || 'Global'}`}
+                  value={`${(file.context_type || file.context).charAt(0).toUpperCase() + (file.context_type || file.context).slice(1)} • ${file.context_id || 'Global'}`}
                   color="text-gray-600"
                 />
               </div>

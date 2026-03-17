@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
 import cmsService from '../../../services/cmsService';
@@ -45,8 +46,20 @@ const faqSchema = yup.object().shape({
 });
 
 export default function ContentManagerView() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
   const [activeTab, setActiveTab] = useState('faq');
   const [loading, setLoading] = useState(false);
+
+  const tabParam = searchParams.get('tab');
+
+  // Auto-switch tabs when deep-linking
+  useEffect(() => {
+    if (tabParam && ['faq', 'terms', 'privacy'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // FAQ State
   const [faqs, setFaqs] = useState([]);
@@ -162,13 +175,8 @@ export default function ContentManagerView() {
         {['terms', 'privacy'].includes(activeTab) && (
           <button
             onClick={handleSaveSingleton}
-            disabled={!isSingletonDirty}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium
-                             ${
-                               isSingletonDirty
-                                 ? 'bg-[rgb(var(--color-primary))] text-white hover:bg-[rgb(var(--color-primary-dark))] shadow-lg'
-                                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                             }`}
+            disabled={loading || !isSingletonDirty}
+            className="flex items-center gap-2 px-6 py-2.5 bg-[rgb(var(--color-primary))] text-white font-bold rounded-xl hover:bg-[rgb(var(--color-primary-dark))] shadow-lg shadow-[rgb(var(--color-primary)/0.2)] disabled:opacity-40 disabled:grayscale-[0.5] disabled:cursor-not-allowed transition-all active:scale-95"
           >
             <Save size={18} />
             <span>Save Changes</span>
@@ -194,6 +202,9 @@ export default function ContentManagerView() {
             <DataTable
               data={faqs}
               searchKeys={['title', 'content']}
+              searchPlaceholder="Search FAQs by question or answer..."
+              highlightId={highlightId}
+              persistenceKey="content-manager-faq"
               extraControls={
                 <button
                   onClick={() => {
@@ -310,6 +321,7 @@ export default function ContentManagerView() {
         onSave={handleSaveFaq}
         title={editingFaq ? 'Edit FAQ' : 'Add New FAQ'}
         initialData={editingFaq}
+        isEditMode={!!editingFaq}
         validationSchema={faqSchema}
         fields={[
           { name: 'title', label: 'Question', placeholder: 'e.g. How do I reset my password?' },

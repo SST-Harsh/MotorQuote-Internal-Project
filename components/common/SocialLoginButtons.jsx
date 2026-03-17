@@ -5,11 +5,10 @@ import { useMsal } from '@azure/msal-react';
 import { loginRequest } from '@/utils/msalConfig';
 import Swal from 'sweetalert2';
 import Button from './Button';
-import { useTranslation } from '../../context/LanguageContext';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 
-const GoogleButton = ({ setLoading, socialLogin, router, t }) => {
+const GoogleButton = ({ setLoading, socialLogin, router }) => {
   const googleLoginHandler = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       setLoading(true);
@@ -27,7 +26,7 @@ const GoogleButton = ({ setLoading, socialLogin, router, t }) => {
           toast: true,
           position: 'top-end',
           icon: 'success',
-          title: t('messages.signinSuccess'),
+          title: 'Sign in successful!',
           showConfirmButton: false,
           timer: 2000,
         });
@@ -36,8 +35,8 @@ const GoogleButton = ({ setLoading, socialLogin, router, t }) => {
         console.error('Google login error:', err);
         Swal.fire({
           icon: 'error',
-          title: t('messages.loginFailed'),
-          text: err.message || t('messages.socialLoginFailed'),
+          title: 'Login Failed',
+          text: err.message || 'Social login failed. Please try again.',
         });
       } finally {
         setLoading(false);
@@ -54,7 +53,7 @@ const GoogleButton = ({ setLoading, socialLogin, router, t }) => {
       type="button"
       variant="secondary"
       onClick={() => googleLoginHandler()}
-      className="flex-1 flex items-center justify-center gap-3 !bg-[rgb(var(--color-surface))] !text-[rgb(var(--color-text))] !border-[rgb(var(--color-border))] hover:!bg-[rgb(var(--color-background))] hover:!border-[rgb(var(--color-primary)/0.3)] hover:shadow-sm transition-all duration-300 py-2.5 rounded-xl h-11"
+      className="w-full flex items-center justify-center gap-3 !bg-[rgb(var(--color-surface))] !text-[rgb(var(--color-text))] !border-[rgb(var(--color-border))] hover:!bg-[rgb(var(--color-background))] hover:!border-[rgb(var(--color-primary)/0.4)] hover:shadow-md transition-all duration-300 py-3 rounded-xl h-12 group"
     >
       <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path
@@ -74,12 +73,14 @@ const GoogleButton = ({ setLoading, socialLogin, router, t }) => {
           fill="#EA4335"
         />
       </svg>
-      <span className="font-medium">{t('login.google')}</span>
+      <span className="font-semibold text-sm group-hover:text-[rgb(var(--color-primary))] transition-colors">
+        Google
+      </span>
     </Button>
   );
 };
 
-const MicrosoftButton = ({ setLoading, socialLogin, router, t }) => {
+const MicrosoftButton = ({ setLoading, socialLogin, router }) => {
   const { instance } = useMsal();
 
   const handleMicrosoftLogin = async () => {
@@ -103,7 +104,7 @@ const MicrosoftButton = ({ setLoading, socialLogin, router, t }) => {
         toast: true,
         position: 'top-end',
         icon: 'success',
-        title: t('messages.signinSuccess'),
+        title: 'Sign in successful!',
         showConfirmButton: false,
         timer: 2000,
       });
@@ -114,8 +115,8 @@ const MicrosoftButton = ({ setLoading, socialLogin, router, t }) => {
         console.error('Microsoft login error:', err);
         Swal.fire({
           icon: 'error',
-          title: t('messages.loginFailed'),
-          text: err.message || t('messages.socialLoginFailed'),
+          title: 'Login Failed',
+          text: err.message || 'Social login failed. Please try again.',
         });
       }
     } finally {
@@ -128,7 +129,7 @@ const MicrosoftButton = ({ setLoading, socialLogin, router, t }) => {
       type="button"
       variant="secondary"
       onClick={handleMicrosoftLogin}
-      className="flex-1 flex items-center justify-center gap-3 !bg-[rgb(var(--color-surface))] !text-[rgb(var(--color-text))] !border-[rgb(var(--color-border))] hover:!bg-[rgb(var(--color-background))] hover:!border-[rgb(var(--color-primary)/0.3)] hover:shadow-sm transition-all duration-300 py-2.5 rounded-xl h-11"
+      className="w-full flex items-center justify-center gap-3 !bg-[rgb(var(--color-surface))] !text-[rgb(var(--color-text))] !border-[rgb(var(--color-border))] hover:!bg-[rgb(var(--color-background))] hover:!border-[rgb(var(--color-primary)/0.4)] hover:shadow-md transition-all duration-300 py-3 rounded-xl h-12 group"
     >
       <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
         <path fill="#f25022" d="M1 1h9v9H1z" />
@@ -136,13 +137,14 @@ const MicrosoftButton = ({ setLoading, socialLogin, router, t }) => {
         <path fill="#00a1f1" d="M1 11h9v9H1z" />
         <path fill="#ffb900" d="M11 11h9v9h-9z" />
       </svg>
-      <span className="font-medium">{t('login.microsoft')}</span>
+      <span className="font-semibold text-sm group-hover:text-[rgb(var(--color-primary))] transition-colors">
+        Microsoft
+      </span>
     </Button>
   );
 };
 
 export default function SocialLoginButtons({ setLoading }) {
-  const { t } = useTranslation('auth');
   const { socialLogin } = useAuth();
   const router = useRouter();
 
@@ -150,12 +152,16 @@ export default function SocialLoginButtons({ setLoading }) {
   const azureClientId = process.env.NEXT_PUBLIC_AZURE_AD_CLIENT_ID;
 
   return (
-    <div className="w-full flex flex-row gap-4 mt-2">
+    <div className="w-full flex flex-row gap-4 mt-4">
       {googleClientId && (
-        <GoogleButton setLoading={setLoading} socialLogin={socialLogin} router={router} t={t} />
+        <div className="flex-1">
+          <GoogleButton setLoading={setLoading} socialLogin={socialLogin} router={router} />
+        </div>
       )}
       {azureClientId && (
-        <MicrosoftButton setLoading={setLoading} socialLogin={socialLogin} router={router} t={t} />
+        <div className="flex-1">
+          <MicrosoftButton setLoading={setLoading} socialLogin={socialLogin} router={router} />
+        </div>
       )}
     </div>
   );

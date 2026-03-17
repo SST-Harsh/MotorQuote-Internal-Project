@@ -3,7 +3,6 @@ import { Plus, Loader2 } from 'lucide-react';
 import tagService from '@/services/tagService';
 import TagBadge from './TagBadge';
 import { useAuth } from '@/context/AuthContext';
-import { useTranslation } from '@/context/LanguageContext';
 
 const TagInput = ({
   selectedTags: propSelectedTags,
@@ -14,7 +13,6 @@ const TagInput = ({
   readOnly = false,
   canCreate = false,
 }) => {
-  const { t } = useTranslation('common');
   const { user } = useAuth();
 
   const selectedTags = useMemo(() => value || propSelectedTags || [], [value, propSelectedTags]);
@@ -25,7 +23,7 @@ const TagInput = ({
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isAdmin = user?.role === 'super_admin';
   const allowCreate = canCreate || isAdmin;
 
   useEffect(() => {
@@ -123,7 +121,7 @@ const TagInput = ({
                 flex flex-wrap items-center gap-2 p-2 rounded-xl bg-[rgb(var(--color-surface))]
                 ${readOnly ? 'bg-[rgb(var(--color-background))] cursor-not-allowed opacity-60' : 'focus:ring-0'}
                 transition-all duration-300
-            `}
+    `}
       >
         {selectedTags.map((tag) => (
           <TagBadge key={tag.id} tag={tag} onDelete={!readOnly ? handleRemoveTag : undefined} />
@@ -141,7 +139,7 @@ const TagInput = ({
               onFocus={() => setIsOpen(true)}
               onKeyDown={handleKeyDown}
               placeholder={selectedTags.length === 0 ? placeholder : ''}
-              className="w-full border-none p-0 focus:ring-0 text-sm placeholder:text-[rgb(var(--color-text-muted))] font-medium bg-transparent"
+              className="w-full border-none p-0 outline-none focus:outline-none focus:ring-0 shadow-none focus:shadow-none text-sm placeholder:text-[rgb(var(--color-text-muted))] font-medium bg-transparent"
             />
           </div>
         )}

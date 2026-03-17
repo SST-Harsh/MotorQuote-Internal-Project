@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   LayoutDashboard,
@@ -30,6 +30,7 @@ import {
   Building2,
 } from 'lucide-react';
 import Loader from '@/components/common/Loader';
+import Input from '@/components/common/Input';
 import StatCard from '@/components/common/StatCard';
 import Swal from 'sweetalert2';
 import {
@@ -53,9 +54,13 @@ import TabNavigation from '@/components/common/TabNavigation';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
 import PageHeader from '@/components/common/PageHeader';
+import CustomSelect from '@/components/common/CustomSelect';
 import LinkifiedText from '@/components/common/LinkifiedText';
 import { formatDate } from '@/utils/i18n';
-
+import { canManageTickets, canManageCMS } from '@/utils/roleUtils';
+import { useSearchParams } from 'next/navigation';
+import { X } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 
 const quillModules = {
@@ -111,19 +116,17 @@ const MOCK_STATS = {
     { name: 'Sat', created: 23, resolved: 38 },
     { name: 'Sun', created: 34, resolved: 43 },
   ],
-  performance: [
-    { name: 'Support Tier 1', satisfaction: 94, speed: 12 },
-    { name: 'Support Tier 2', satisfaction: 88, speed: 5 },
-    { name: 'Priority Desk', satisfaction: 99, speed: 20 },
-  ],
 };
 
 export default function SuperAdminSupportView() {
+  const { user } = useAuth();
+  const canManageTickets_perm = canManageTickets(user);
+  const canManageCMS_perm = canManageCMS(user);
+
   const [tickets, setTickets] = useState([]);
   const [stats, setStats] = useState({
     summary: [],
     trends: [],
-    performance: MOCK_STATS.performance,
   });
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -131,24 +134,29 @@ export default function SuperAdminSupportView() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [ticketFilter, setTicketFilter] = useState('All');
+  const [recentlyChangedIds, setRecentlyChangedIds] = useState(new Set());
   const [openActionMenu, setOpenActionMenu] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [isCreatingDoc, setIsCreatingDoc] = useState(false);
   const [newDocForm, setNewDocForm] = useState({
     title: '',
     slug: '',
-    category: 'user_guide',
     content: '',
     tags: '',
     is_active: true,
     display_order: 1,
+    meta_description: '',
+    meta_keywords: '',
   });
+  const [initialDocData, setInitialDocData] = useState(null);
   const [viewingDoc, setViewingDoc] = useState(null);
   const [editorMode, setEditorMode] = useState('edit'); // 'edit' or 'preview'
   const [trendsTimeframe, setTrendsTimeframe] = useState(7);
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlightId') || searchParams.get('highlight');
 
   // Filter State
-  const normalizeTicket = (t) => {
+  const normalizeTicket = useCallback((t) => {
     if (!t) return null;
     const clean = (val) => (val === 'N/A' || val === 'undefined' || val === 'null' ? '' : val);
 
@@ -178,7 +186,7 @@ export default function SuperAdminSupportView() {
       created_at: t.created_at || fallback.created_at,
       resolved_at: t.resolved_at || null,
     };
-  };
+  }, []);
 
   // Fetch Data
   useEffect(() => {
@@ -273,7 +281,6 @@ export default function SuperAdminSupportView() {
             },
           ],
           trends: trends,
-          performance: MOCK_STATS.performance,
         });
 
         const rawDocs = Array.isArray(docsData)
@@ -286,7 +293,6 @@ export default function SuperAdminSupportView() {
           rawDocs.map((d) => ({
             ...d,
             status: d.status || (d.isActive || d.is_active ? 'Published' : 'Draft'),
-            category: d.category || d.contentType || 'user_guide',
             author: d.author || d.creatorName || d.creator_name || 'Admin',
             date:
               d.date ||
@@ -303,7 +309,57 @@ export default function SuperAdminSupportView() {
       }
     };
     loadData();
-  }, [trendsTimeframe]);
+  }, [trendsTimeframe, normalizeTicket]);
+
+  const loadTicketDetails = useCallback(
+    async (ticket) => {
+      try {
+        setSelectedTicket(ticket);
+        const fullTicket = await supportService.getTicketById(ticket.id);
+        const ticketData = normalizeTicket(fullTicket?.data || fullTicket);
+
+        // Fetch Tags for the ticket
+        try {
+          const ticketTags = await tagService.getEntityTags('support_ticket', ticket.id);
+          ticketData.tags = ticketTags;
+        } catch (tagError) {
+          console.error('Failed to fetch ticket tags', tagError);
+        }
+
+        setSelectedTicket(ticketData);
+      } catch (error) {
+        console.error('Failed to load ticket details', error);
+      }
+    },
+    [setSelectedTicket, normalizeTicket]
+  );
+
+  // Handle highlightId
+  useEffect(() => {
+    if (highlightId && tickets.length > 0) {
+      const ticket = tickets.find((t) => t.id === highlightId);
+      if (ticket) {
+        loadTicketDetails(ticket);
+        setActiveTab('tickets');
+        // Optional: scroll to the ticket element if needed
+        setTimeout(() => {
+          const element = document.getElementById(`ticket-${highlightId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setRecentlyChangedIds((prev) => new Set(prev).add(highlightId));
+            // Clear highlight after some time
+            setTimeout(() => {
+              setRecentlyChangedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(highlightId);
+                return next;
+              });
+            }, 2000);
+          }
+        }, 500);
+      }
+    }
+  }, [highlightId, tickets, loadTicketDetails, setActiveTab, setRecentlyChangedIds]);
 
   const handleAddMessage = async () => {
     if (!replyText.trim() || !selectedTicket) return;
@@ -328,37 +384,20 @@ export default function SuperAdminSupportView() {
     }
   };
 
-  const loadTicketDetails = async (ticket) => {
-    try {
-      setSelectedTicket(ticket);
-      const fullTicket = await supportService.getTicketById(ticket.id);
-      const ticketData = normalizeTicket(fullTicket?.data || fullTicket);
-
-      // Fetch Tags for the ticket
-      try {
-        const ticketTags = await tagService.getEntityTags('support_ticket', ticket.id);
-        ticketData.tags = ticketTags;
-      } catch (tagError) {
-        console.error('Failed to fetch ticket tags', tagError);
-      }
-
-      setSelectedTicket(ticketData);
-    } catch (error) {
-      console.error('Failed to load ticket details', error);
-    }
-  };
-
   const handleEditDoc = (doc) => {
-    setNewDocForm({
+    const formData = {
       id: doc.id,
       title: doc.title || '',
       slug: doc.slug || '',
-      category: doc.category || 'user_guide',
       content: doc.content || '',
       tags: Array.isArray(doc.tags) ? doc.tags : [],
       is_active: doc.is_active !== undefined ? doc.is_active : true,
       display_order: doc.display_order || 1,
-    });
+      meta_description: doc.meta_description || '',
+      meta_keywords: doc.meta_keywords || '',
+    };
+    setNewDocForm(formData);
+    setInitialDocData(formData);
     setIsCreatingDoc(true);
     setOpenActionMenu(null);
   };
@@ -421,7 +460,7 @@ export default function SuperAdminSupportView() {
             statusUpdate = { status: 'resolved', resolution_note: 'Resolved by Super Admin' };
           }
 
-          await supportService.updateTicketStatus(ticketId, statusUpdate);
+          await supportService.deleteTicket(ticketId);
 
           const now = new Date().toISOString();
           const updatedTickets = tickets.map((t) => {
@@ -439,6 +478,7 @@ export default function SuperAdminSupportView() {
             if (action === 'Resolved') updatedSelected.resolved_at = now;
             setSelectedTicket(updatedSelected);
           }
+          setRecentlyChangedIds((prev) => new Set(prev).add(ticketId));
           Swal.fire('Updated!', `Ticket updated successfully.`, 'success');
         } catch (error) {
           console.error('Action failed', error);
@@ -449,16 +489,19 @@ export default function SuperAdminSupportView() {
   };
 
   const handleCreateDoc = () => {
-    setIsCreatingDoc(true);
-    setNewDocForm({
+    const emptyForm = {
       title: '',
       slug: '',
-      category: 'user_guide',
       content: '',
       tags: '',
       is_active: true,
       display_order: 1,
-    });
+      meta_description: '',
+      meta_keywords: '',
+    };
+    setIsCreatingDoc(true);
+    setNewDocForm(emptyForm);
+    setInitialDocData(emptyForm);
   };
 
   const handleSaveDoc = async () => {
@@ -632,14 +675,16 @@ export default function SuperAdminSupportView() {
                     <h3 className="text-lg font-bold text-[rgb(var(--color-text))]">
                       Weekly Ticket Trends
                     </h3>
-                    <select
+                    <CustomSelect
                       value={trendsTimeframe}
                       onChange={(e) => setTrendsTimeframe(Number(e.target.value))}
-                      className="text-xs bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl px-3 py-1.5 outline-none font-bold"
-                    >
-                      <option value={7}>Last 7 Days</option>
-                      <option value={30}>Last 30 Days</option>
-                    </select>
+                      options={[
+                        { value: 7, label: 'Last 7 Days' },
+                        { value: 30, label: 'Last 30 Days' },
+                      ]}
+                      className="w-28"
+                      size="sm"
+                    />
                   </div>
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -719,56 +764,108 @@ export default function SuperAdminSupportView() {
               )}
             </div>
 
-            {/* Performance Stats */}
-            <div className="bg-[rgb(var(--color-surface))] p-6 rounded-3xl border border-[rgb(var(--color-border))] shadow-sm">
+            {/* Priority Distribution */}
+            <div className="bg-[rgb(var(--color-surface))] p-6 rounded-3xl border border-[rgb(var(--color-border))] shadow-sm flex flex-col">
               {loading ? (
-                <div className="flex justify-center py-8">
+                <div className="h-[350px] w-full flex items-center justify-center">
                   <Loader />
                 </div>
               ) : (
-                <h3 className="text-lg font-bold text-[rgb(var(--color-text))] mb-6">
-                  Team Performance
-                </h3>
+                <>
+                  <h3 className="text-lg font-bold text-[rgb(var(--color-text))] mb-6">
+                    Priority Distribution
+                  </h3>
+                  <div className="flex-1 flex flex-col justify-center">
+                    <div className="h-[200px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={(() => {
+                              const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+                              tickets.forEach((t) => {
+                                const p = (t.priority || 'medium').toLowerCase();
+                                if (counts[p] !== undefined) counts[p]++;
+                              });
+                              const data = [
+                                { name: 'Critical', value: counts.critical, color: '#ef4444' },
+                                { name: 'High', value: counts.high, color: '#f59e0b' },
+                                { name: 'Medium', value: counts.medium, color: '#3b82f6' },
+                                {
+                                  name: 'Low',
+                                  value: counts.low,
+                                  color: 'rgb(var(--color-text-muted))',
+                                },
+                              ].filter((d) => d.value > 0);
+                              return data;
+                            })()}
+                            innerRadius={65}
+                            outerRadius={85}
+                            paddingAngle={5}
+                            dataKey="value"
+                            animationBegin={0}
+                            animationDuration={1000}
+                          >
+                            {(() => {
+                              const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+                              tickets.forEach((t) => {
+                                const p = (t.priority || 'medium').toLowerCase();
+                                if (counts[p] !== undefined) counts[p]++;
+                              });
+                              return [
+                                { name: 'Critical', value: counts.critical, color: '#ef4444' },
+                                { name: 'High', value: counts.high, color: '#f59e0b' },
+                                { name: 'Medium', value: counts.medium, color: '#3b82f6' },
+                                {
+                                  name: 'Low',
+                                  value: counts.low,
+                                  color: 'rgb(var(--color-text-muted))',
+                                },
+                              ].filter((d) => d.value > 0);
+                            })().map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'rgb(var(--color-surface))',
+                              borderRadius: '12px',
+                              border: '1px solid rgb(var(--color-border))',
+                              fontSize: '12px',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-8 grid grid-cols-1 gap-3">
+                      {[
+                        { label: 'Critical', color: 'bg-red-500', key: 'critical' },
+                        { label: 'High', color: 'bg-amber-500', key: 'high' },
+                        { label: 'Medium', color: 'bg-blue-500', key: 'medium' },
+                        { label: 'Low', color: 'bg-[rgb(var(--color-text-muted))]', key: 'low' },
+                      ].map((item, i) => {
+                        const count = tickets.filter(
+                          (t) => (t.priority || '').toLowerCase() === item.key
+                        ).length;
+                        const percentage =
+                          tickets.length > 0 ? Math.round((count / tickets.length) * 100) : 0;
+                        return (
+                          <div key={i} className="flex items-center group">
+                            <div
+                              className={`w-3 h-3 rounded-full ${item.color} mr-3 shadow-sm group-hover:scale-110 transition-transform`}
+                            />
+                            <span className="text-xs font-bold text-[rgb(var(--color-text))] flex-1">
+                              {item.label}
+                            </span>
+                            <span className="text-[rgb(var(--color-text-muted))] text-xs font-mono bg-[rgb(var(--color-background))] px-2 py-0.5 rounded-lg border border-[rgb(var(--color-border))]">
+                              {percentage}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               )}
-              <div className="space-y-6">
-                {loading
-                  ? null
-                  : (stats.performance || []).map((team, i) => (
-                      <div key={i}>
-                        <div className="flex justify-between text-sm font-bold mb-2">
-                          <span className="text-[rgb(var(--color-text))]">{team.name}</span>
-                          <span className="text-[rgb(var(--color-primary))]">
-                            {team.satisfaction}% CSAT
-                          </span>
-                        </div>
-                        <div className="w-full bg-[rgb(var(--color-background))] rounded-full h-2.5 shadow-inner">
-                          <div
-                            className="bg-[rgb(var(--color-primary))] h-2.5 rounded-full transition-all duration-1000"
-                            style={{ width: `${team.satisfaction}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-[10px] font-bold text-[rgb(var(--color-text-muted))] mt-1.5 text-right uppercase tracking-wider opacity-60">
-                          Avg Speed: {team.speed}% above target
-                        </p>
-                      </div>
-                    ))}
-              </div>
-
-              <div className="mt-8 pt-6 border-t border-[rgb(var(--color-border))]">
-                <h4 className="text-sm font-black text-[rgb(var(--color-text))] mb-3 uppercase tracking-wider">
-                  System Health
-                </h4>
-                {loading ? (
-                  <div className="flex justify-center py-2">
-                    <Loader />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 p-3.5 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 shadow-sm">
-                    <CheckCircle size={20} className="shrink-0" />
-                    <span className="text-xs font-bold leading-none">All Systems Operational</span>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -783,19 +880,17 @@ export default function SuperAdminSupportView() {
           >
             <div className="p-4 border-b border-[rgb(var(--color-border))] space-y-3">
               <div className="flex gap-2 relative">
-                <div className="relative flex-1 group">
-                  <Search
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] group-focus-within:text-[rgb(var(--color-primary))] transition-colors"
-                    size={16}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Search details..."
-                    className="w-full bg-[rgb(var(--color-background))] pl-10 pr-4 py-2.5 text-sm rounded-xl border border-[rgb(var(--color-border))] focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] outline-none transition-all"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
+                <Input
+                  type="text"
+                  placeholder="Search details..."
+                  icon={Search}
+                  rightIcon={searchQuery ? X : null}
+                  onRightIconClick={() => setSearchQuery('')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="mb-0 w-full"
+                  inputClassName="h-10 pl-10 pr-10"
+                />
               </div>
               <div className="flex gap-2 text-xs overflow-x-auto no-scrollbar pb-1">
                 {['All', 'Open', 'Closed', 'Resolved'].map((filter) => (
@@ -821,7 +916,9 @@ export default function SuperAdminSupportView() {
                       ticketFilter === 'All' ||
                       (ticketFilter === 'Open' && ticket.status?.toLowerCase() === 'open') ||
                       (ticketFilter === 'Closed' && ticket.status?.toLowerCase() === 'closed') ||
-                      (ticketFilter === 'Resolved' && ticket.status?.toLowerCase() === 'resolved');
+                      (ticketFilter === 'Resolved' &&
+                        ticket.status?.toLowerCase() === 'resolved') ||
+                      recentlyChangedIds.has(ticket.id);
 
                     const matchesSearch =
                       !searchQuery.trim() ||
@@ -846,8 +943,9 @@ export default function SuperAdminSupportView() {
                   return filteredTickets.map((ticket) => (
                     <button
                       key={ticket.id}
+                      id={`ticket-${ticket.id}`}
                       onClick={() => loadTicketDetails(ticket)}
-                      className={`w-full text-left p-4 border-b border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-background))] transition-all group relative ${selectedTicket?.id === ticket.id ? 'bg-[rgb(var(--color-primary))/0.04] border-l-4 border-l-[rgb(var(--color-primary))]' : 'border-l-4 border-l-transparent hover:border-l-[rgb(var(--color-border))]'}`}
+                      className={`w-full text-left p-4 border-b border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-background))] transition-all group relative ${selectedTicket?.id === ticket.id ? 'bg-[rgb(var(--color-primary))/0.04] border-l-4 border-l-[rgb(var(--color-primary))]' : 'border-l-4 border-l-transparent hover:border-l-[rgb(var(--color-border))]'} ${recentlyChangedIds.has(ticket.id) ? 'bg-[rgb(var(--color-primary))/0.1] ring-2 ring-[rgb(var(--color-primary))] z-10' : ''}`}
                     >
                       <div className="flex gap-3">
                         <div className="flex-shrink-0 mt-1">
@@ -902,7 +1000,10 @@ export default function SuperAdminSupportView() {
                                 {ticket.user}
                               </span>
                             </div>
-                            <StatusBadge status={ticket.status} />
+                            <div className="flex items-center gap-2">
+                              <StatusBadge status={ticket.status} />
+                              <PriorityBadge priority={ticket.priority} />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -991,13 +1092,28 @@ export default function SuperAdminSupportView() {
                   <div className="relative">
                     <button
                       onClick={() =>
+                        canManageTickets_perm &&
                         setOpenActionMenu(
                           openActionMenu === selectedTicket.id ? null : selectedTicket.id
                         )
                       }
-                      className="px-5 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-xl text-xs font-black shadow-lg shadow-[rgb(var(--color-primary)/0.2)] hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95 flex items-center gap-2"
+                      disabled={!canManageTickets_perm}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-[rgb(var(--color-primary)/0.2)] transition-all active:scale-95 flex items-center gap-2 ${
+                        canManageTickets_perm
+                          ? 'bg-[rgb(var(--color-primary))] text-white hover:bg-[rgb(var(--color-primary-dark))]'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                      }`}
+                      title={
+                        canManageTickets_perm
+                          ? 'Manage Ticket'
+                          : "You don't have permission to manage tickets."
+                      }
                     >
-                      Manage Ticket <ChevronDown size={14} />
+                      Manage Ticket{' '}
+                      <ChevronDown
+                        size={14}
+                        className={`transition-transform duration-200 ${openActionMenu === selectedTicket.id ? 'rotate-180' : ''}`}
+                      />
                     </button>
 
                     {openActionMenu === selectedTicket.id && (
@@ -1006,14 +1122,17 @@ export default function SuperAdminSupportView() {
                           className="fixed inset-0 z-10"
                           onClick={() => setOpenActionMenu(null)}
                         ></div>
-                        <div className="absolute right-0 top-full mt-2 w-56 bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl border border-[rgb(var(--color-border))] z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="absolute left-0 top-full mt-2 w-56 bg-[rgb(var(--color-surface))] rounded-2xl shadow-2xl border border-[rgb(var(--color-border))] z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                           <div className="p-2 space-y-1">
                             <p className="px-3 py-2 text-[10px] font-black text-[rgb(var(--color-text-muted))] uppercase tracking-widest opacity-60">
                               Status Actions
                             </p>
                             {selectedTicket.status !== 'resolved' && (
                               <button
-                                onClick={() => handleTicketAction('Resolved', selectedTicket.id)}
+                                onClick={() => {
+                                  handleTicketAction('Resolved', selectedTicket.id);
+                                  setOpenActionMenu(null);
+                                }}
                                 className="w-full text-left px-3 py-2.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl flex items-center gap-3 transition-colors"
                               >
                                 <CheckCircle size={16} /> Mark as Resolved
@@ -1021,7 +1140,10 @@ export default function SuperAdminSupportView() {
                             )}
 
                             <button
-                              onClick={() => handleTicketAction('Closed', selectedTicket.id)}
+                              onClick={() => {
+                                handleTicketAction('Closed', selectedTicket.id);
+                                setOpenActionMenu(null);
+                              }}
                               className="w-full text-left px-3 py-2.5 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-xl flex items-center gap-3 transition-colors"
                             >
                               <XCircle size={16} /> Close Ticket
@@ -1029,7 +1151,10 @@ export default function SuperAdminSupportView() {
 
                             {selectedTicket.escalated && (
                               <button
-                                onClick={() => handleTicketAction('De-escalate', selectedTicket.id)}
+                                onClick={() => {
+                                  handleTicketAction('De-escalate', selectedTicket.id);
+                                  setOpenActionMenu(null);
+                                }}
                                 className="w-full text-left px-3 py-2.5 text-xs font-bold text-amber-600 hover:bg-amber-50 rounded-xl flex items-center gap-3 transition-colors"
                               >
                                 <Shield size={16} /> Resolve Escalation
@@ -1042,7 +1167,10 @@ export default function SuperAdminSupportView() {
                             </p>
 
                             <button
-                              onClick={() => handleTicketAction('Delete', selectedTicket.id)}
+                              onClick={() => {
+                                handleTicketAction('Delete', selectedTicket.id);
+                                setOpenActionMenu(null);
+                              }}
                               className="w-full text-left px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-3 transition-colors"
                             >
                               <Trash2 size={16} /> Delete Ticket
@@ -1231,8 +1359,18 @@ export default function SuperAdminSupportView() {
             </h2>
             {!isCreatingDoc && !viewingDoc && (
               <button
-                onClick={handleCreateDoc}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95"
+                onClick={() => canManageCMS_perm && handleCreateDoc()}
+                disabled={!canManageCMS_perm}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 ${
+                  canManageCMS_perm
+                    ? 'bg-[rgb(var(--color-primary))] text-white hover:bg-[rgb(var(--color-primary-dark))]'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  canManageCMS_perm
+                    ? 'New Document'
+                    : "You don't have permission to manage CMS documents."
+                }
               >
                 <Plus size={18} /> New Document
               </button>
@@ -1249,9 +1387,38 @@ export default function SuperAdminSupportView() {
 
           {isCreatingDoc ? (
             <div className="bg-[rgb(var(--color-surface))] p-6 rounded-2xl border border-[rgb(var(--color-border))] shadow-sm">
-              <h3 className="text-lg font-bold text-[rgb(var(--color-text))] mb-4">
-                {newDocForm.id ? 'Edit Document' : 'New Document'}
-              </h3>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-xl font-bold text-[rgb(var(--color-text))]">
+                    {newDocForm.id ? 'Edit Document' : 'Create New Document'}
+                  </h3>
+                  <p className="text-xs font-bold text-[rgb(var(--color-text-muted))] uppercase tracking-widest mt-1">
+                    {newDocForm.id
+                      ? `Managing: ${newDocForm.slug}`
+                      : 'Setup your documentation details'}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-6 bg-[rgb(var(--color-background))] px-5 py-3 rounded-2xl border border-[rgb(var(--color-border))]">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-wider ${newDocForm.is_active ? 'text-emerald-500' : 'text-[rgb(var(--color-text-muted))]'}`}
+                    >
+                      {newDocForm.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setNewDocForm({ ...newDocForm, is_active: !newDocForm.is_active })
+                      }
+                      className={`w-11 h-6 rounded-full relative transition-colors duration-200 focus:outline-none ${newDocForm.is_active ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                    >
+                      <div
+                        className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ${newDocForm.is_active ? 'transform translate-x-5' : ''}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1261,7 +1428,14 @@ export default function SuperAdminSupportView() {
                     <input
                       type="text"
                       value={newDocForm.title}
-                      onChange={(e) => setNewDocForm({ ...newDocForm, title: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const slug = val
+                          .toLowerCase()
+                          .replace(/[^a-z0-9]+/g, '-')
+                          .replace(/(^-|-$)/g, '');
+                        setNewDocForm({ ...newDocForm, title: val, slug: slug });
+                      }}
                       className="w-full bg-[rgb(var(--color-background))] px-4 py-2.5 rounded-xl border border-[rgb(var(--color-border))] outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
                       placeholder="e.g. Getting Started with Quotes"
                     />
@@ -1278,25 +1452,7 @@ export default function SuperAdminSupportView() {
                       placeholder="e.g. getting-started-quotes"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] mb-1">
-                        Category
-                      </label>
-                      <select
-                        value={newDocForm.category}
-                        onChange={(e) => setNewDocForm({ ...newDocForm, category: e.target.value })}
-                        className="w-full bg-[rgb(var(--color-background))] px-4 py-2.5 rounded-xl border border-[rgb(var(--color-border))] outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-                      >
-                        <option value="user_guide">User Guide</option>
-                        <option value="api_reference">API Reference</option>
-                        <option value="troubleshooting">Troubleshooting</option>
-                        <option value="faq">FAQ</option>
-                        <option value="release_notes">Release Notes</option>
-                        <option value="policy">Policy & Legal</option>
-                        <option value="terms">Terms of Service</option>
-                      </select>
-                    </div>
+                  <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] mb-1">
                         Display Order
@@ -1326,7 +1482,48 @@ export default function SuperAdminSupportView() {
                     />
                   </div>
                 </div>
-                <div>
+
+                {/* SEO & Metadata */}
+                <div className="p-5 bg-[rgb(var(--color-background))] rounded-2xl border border-[rgb(var(--color-border))] space-y-4">
+                  <div className="flex items-center gap-2 text-[rgb(var(--color-primary))] mb-2">
+                    <Search size={16} />
+                    <span className="text-xs font-black uppercase tracking-widest">
+                      SEO & Metadata
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] mb-1">
+                        Meta Description
+                      </label>
+                      <textarea
+                        value={newDocForm.meta_description}
+                        onChange={(e) =>
+                          setNewDocForm({ ...newDocForm, meta_description: e.target.value })
+                        }
+                        placeholder="Enter SEO description for search engines..."
+                        className="w-full bg-[rgb(var(--color-surface))] px-4 py-2.5 rounded-xl border border-[rgb(var(--color-border))] outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2] min-h-[80px]"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))] mb-1">
+                        Meta Keywords
+                      </label>
+                      <Input
+                        value={newDocForm.meta_keywords}
+                        onChange={(e) =>
+                          setNewDocForm({ ...newDocForm, meta_keywords: e.target.value })
+                        }
+                        placeholder="comma, separated, keywords..."
+                        className="mb-0"
+                        inputClassName="bg-[rgb(var(--color-surface))]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="min-h-[400px]">
                   <div className="flex justify-between items-center mb-1">
                     <label className="block text-xs font-bold text-[rgb(var(--color-text-muted))]">
                       Content (Markdown supported)
@@ -1371,7 +1568,31 @@ export default function SuperAdminSupportView() {
                   </button>
                   <button
                     onClick={handleSaveDoc}
-                    className="px-5 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-xl font-bold shadow-md hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95"
+                    disabled={(() => {
+                      if (!initialDocData) return false;
+                      const current = { ...newDocForm };
+                      const initial = { ...initialDocData };
+
+                      const normalizeTags = (tags) => {
+                        if (!Array.isArray(tags)) return '';
+                        return tags
+                          .map((t) => (typeof t === 'object' ? t.id || t.name || t : t))
+                          .sort()
+                          .join(',');
+                      };
+
+                      const isDirty =
+                        current.title !== initial.title ||
+                        current.slug !== initial.slug ||
+                        current.content !== initial.content ||
+                        current.display_order !== initial.display_order ||
+                        current.is_active !== initial.is_active ||
+                        current.meta_description !== initial.meta_description ||
+                        current.meta_keywords !== initial.meta_keywords ||
+                        normalizeTags(current.tags) !== normalizeTags(initial.tags);
+                      return !isDirty;
+                    })()}
+                    className="px-5 py-2.5 bg-[rgb(var(--color-primary))] text-white rounded-xl font-bold shadow-md hover:bg-[rgb(var(--color-primary-dark))] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                   >
                     Save Document
                   </button>
@@ -1452,18 +1673,28 @@ export default function SuperAdminSupportView() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleEditDoc(doc);
+                                  canManageCMS_perm && handleEditDoc(doc);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))] rounded-lg flex items-center gap-2"
+                                disabled={!canManageCMS_perm}
+                                className={`w-full text-left px-3 py-2 text-xs font-bold rounded-lg flex items-center gap-2 transition-colors ${
+                                  canManageCMS_perm
+                                    ? 'text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-background))]'
+                                    : 'text-gray-400 cursor-not-allowed opacity-50'
+                                }`}
                               >
                                 <Edit size={14} /> Edit Document
-                              </button>
+                              </button>{' '}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteDoc(doc.id);
+                                  canManageCMS_perm && handleDeleteDoc(doc.id);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2"
+                                disabled={!canManageCMS_perm}
+                                className={`w-full text-left px-3 py-2 text-xs font-bold rounded-lg flex items-center gap-2 transition-colors ${
+                                  canManageCMS_perm
+                                    ? 'text-red-600 hover:bg-red-50'
+                                    : 'text-gray-400 cursor-not-allowed opacity-50'
+                                }`}
                               >
                                 <Trash2 size={14} /> Delete Document
                               </button>
@@ -1474,21 +1705,43 @@ export default function SuperAdminSupportView() {
                     </div>
                   </div>
                   <div className="flex-1" onClick={() => setViewingDoc(doc)}>
-                    <h3 className="font-bold text-[rgb(var(--color-text))] mb-2 group-hover:text-[rgb(var(--color-primary))] transition-colors">
-                      {doc.title}
-                    </h3>
-                    <div className="text-xs text-[rgb(var(--color-text-muted))] line-clamp-3 mb-4">
+                    <div className="flex flex-col gap-1">
+                      <h4 className="font-bold text-[rgb(var(--color-text))] group-hover:text-[rgb(var(--color-primary))] transition-colors">
+                        {doc.title}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1.5 text-[10px] text-[rgb(var(--color-text-muted))] bg-[rgb(var(--color-background))] px-2 py-0.5 rounded-full border border-[rgb(var(--color-border))]">
+                          <User size={10} />
+                          <span className="font-bold">{doc.author || 'Admin'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-[rgb(var(--color-text-muted))] bg-[rgb(var(--color-background))] px-2 py-0.5 rounded-full border border-[rgb(var(--color-border))]">
+                          <Clock size={10} />
+                          <span className="font-bold">{doc.date}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-[rgb(var(--color-text-muted))] line-clamp-3 mb-4 mt-3">
                       {doc.content?.replace(/<[^>]*>/g, '').substring(0, 120)}...
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-3 border-t border-[rgb(var(--color-border))] mt-auto">
-                    <TagList tags={doc.tags || []} limit={2} />
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-[rgb(var(--color-text-muted))]">
-                        {doc.date}
-                      </span>
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 ring-2 ring-white">
-                        {(doc.author || 'A').charAt(0)}
+                      <div className="flex items-center gap-1 text-[rgb(var(--color-text-muted))]">
+                        <Tag size={10} />
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {(doc.tags || []).length > 0 ? (
+                          <TagList tags={doc.tags} limit={2} />
+                        ) : (
+                          <span className="text-[9px] text-[rgb(var(--color-text-muted))] italic">
+                            No tags
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-[rgb(var(--color-primary))/0.1] border border-[rgb(var(--color-primary))/0.2] flex items-center justify-center text-[10px] font-bold text-[rgb(var(--color-primary))]">
+                        {(doc.author || 'A').charAt(0).toUpperCase()}
                       </div>
                     </div>
                   </div>

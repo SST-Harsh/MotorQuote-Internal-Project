@@ -1,7 +1,7 @@
 import React from 'react';
-import { useTranslation } from '../../../context/LanguageContext';
 import { Search, User, CheckCircle, Building2 } from 'lucide-react';
-import TagFilter from '../../common/tags/TagFilter';
+import TagFilter from '@/components/common/tags/TagFilter';
+import CustomSelect from '@/components/common/CustomSelect';
 
 export default function UserFilterContent({
   activeFilters,
@@ -10,21 +10,19 @@ export default function UserFilterContent({
   dealerships = [],
   tagOptions = [],
 }) {
-  const { t } = useTranslation('users');
-
   return (
     <>
       {/* Name Filter */}
       <div>
         <label className="flex items-center gap-2 text-sm font-semibold text-[rgb(var(--color-text))] mb-3">
           <Search size={16} className="text-[rgb(var(--color-primary))]" />
-          {t('filters.searchByName')}
+          Search by Name
         </label>
         <input
           type="text"
           value={activeFilters.name || ''}
           onChange={(e) => setActiveFilters({ ...activeFilters, name: e.target.value })}
-          placeholder={t('filters.enterName')}
+          placeholder="Enter full name..."
           className="w-full px-4 py-2.5 border border-[rgb(var(--color-border))] rounded-lg bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text-muted))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:border-transparent transition-all"
         />
       </div>
@@ -32,7 +30,7 @@ export default function UserFilterContent({
       <div>
         <label className="flex items-center gap-2 text-sm font-semibold text-[rgb(var(--color-text))] mb-3">
           <User size={16} className="text-[rgb(var(--color-primary))]" />
-          {t('filters.role')}
+          Filter by Roles
         </label>
         <div className="space-y-2">
           {(Array.isArray(roles) ? roles : []).map((role) => (
@@ -77,10 +75,10 @@ export default function UserFilterContent({
       <div>
         <label className="flex items-center gap-2 text-sm font-semibold text-[rgb(var(--color-text))] mb-3">
           <CheckCircle size={16} className="text-[rgb(var(--color-primary))]" />
-          {t('filters.status')}
+          Account Status
         </label>
         <div className="space-y-2">
-          {['active', 'inactive', 'suspended'].map((status) => (
+          {['active', 'inactive'].map((status) => (
             <label
               key={status}
               className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
@@ -106,7 +104,7 @@ export default function UserFilterContent({
                 className="rounded border-[rgb(var(--color-border))] text-[rgb(var(--color-primary))] focus:ring-[rgb(var(--color-primary))]"
               />
               <span className="text-sm text-[rgb(var(--color-text))] font-medium">
-                {t(`statuses.${status}`)}
+                {status.charAt(0).toUpperCase() + status.slice(1)}
               </span>
             </label>
           ))}
@@ -129,18 +127,24 @@ export default function UserFilterContent({
             <Building2 size={16} className="text-[rgb(var(--color-primary))]" />
             Dealership
           </label>
-          <select
+          <CustomSelect
+            placeholder="All Dealerships"
+            // isSearchable={true}
             value={activeFilters.dealership || ''}
             onChange={(e) => setActiveFilters({ ...activeFilters, dealership: e.target.value })}
-            className="w-full px-4 py-2.5 border border-[rgb(var(--color-border))] rounded-lg bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))] focus:border-transparent transition-all"
-          >
-            <option value="">All Dealerships</option>
-            {(Array.isArray(dealerships) ? dealerships : []).map((dealer) => (
-              <option key={dealer.value} value={dealer.value}>
-                {dealer.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: 'All Dealerships' },
+              ...(Array.isArray(dealerships)
+                ? dealerships
+                    .filter((d) => (d.id || d.value) && (d.name || d.label))
+                    .map((d) => ({
+                      value: String(d.id || d.value),
+                      label: String(d.name || d.label).trim(),
+                    }))
+                : []),
+            ]}
+            className="w-full"
+          />
         </div>
       )}
     </>

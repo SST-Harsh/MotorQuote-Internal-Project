@@ -64,7 +64,7 @@ export default function FAQView({ fetcher, title = 'Frequently Asked Questions' 
               className="flex items-center text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] transition-colors"
             >
               <ArrowLeft size={16} className="mr-2" />
-              Back to Login
+              Back
             </Link>
           </div>
 

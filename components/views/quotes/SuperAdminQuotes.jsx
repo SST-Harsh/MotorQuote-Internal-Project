@@ -1,19 +1,17 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   FileText,
   DollarSign,
   CheckCircle,
   Eye,
-  Plus,
   Clock,
   X,
   Filter,
   Building2,
   MoreVertical,
   Trash2,
-  Edit,
   Car,
 } from 'lucide-react';
 import StatCard from '../../common/StatCard';
@@ -22,7 +20,8 @@ import { SkeletonTable } from '../../common/Skeleton';
 import FilterDrawer from '../../common/FilterDrawer';
 import CustomDateTimePicker from '../../common/CustomDateTimePicker';
 import dealershipService from '@/services/dealershipService';
-import { useQuotes, useUpdateQuote, useDeleteQuote, useOverrideStatus } from '@/hooks/useQuotes';
+import { useQuotes, useDeleteQuote, useOverrideStatus } from '@/hooks/useQuotes';
+import CustomSelect from '@/components/common/CustomSelect';
 import ActionMenuPortal from '@/components/common/ActionMenuPortal';
 import dayjs from 'dayjs';
 import Swal from 'sweetalert2';
@@ -31,22 +30,76 @@ import TagList from '@/components/common/tags/TagList';
 import { usePreference } from '@/context/PreferenceContext';
 import { formatDate } from '@/utils/i18n';
 import PageHeader from '@/components/common/PageHeader';
+import { useAuth } from '@/context/AuthContext';
+import { canDelete, canEditQuote, canViewQuote } from '@/utils/roleUtils';
 
 export default function SuperAdminQuotes() {
   const { preferences } = usePreference();
   const router = useRouter();
+  const { user } = useAuth();
+  const canView = canViewQuote(user);
+  const canEdit = canEditQuote(user);
+  const canDeleteVal = canDelete(user, 'quotes');
+  const searchParams = useSearchParams();
+
+  // Read from URL once, then store in local state so it can be cleared
+  const initialHighlightId = searchParams.get('highlightId') || searchParams.get('highlight');
+  const [localHighlightId, setLocalHighlightId] = useState(initialHighlightId);
+
+  // Clear local highlight after duration matches DataTable
+  useEffect(() => {
+    if (localHighlightId) {
+      const timer = setTimeout(() => {
+        setLocalHighlightId(null);
+      }, 3000); // slightly longer than DataTable's animation to ensure it clears
+      return () => clearTimeout(timer);
+    }
+  }, [localHighlightId]);
+
   const [openActionMenu, setOpenActionMenu] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [selectedQuoteIds, setSelectedQuoteIds] = useState([]);
-  const [filters, setFilters] = useState({
-    status: '',
-    minPrice: '',
-    maxPrice: '',
-    dateStart: '',
-    dateEnd: '',
-    dealershipId: '',
-    tags: [],
+  const pathname = usePathname();
+  const isRefresh = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('app_last_path') === pathname;
+  }, [pathname]);
+
+  const [filters, setFilters] = useState(() => {
+    const defaultFilters = {
+      status: '',
+      minPrice: '',
+      maxPrice: '',
+      dateStart: '',
+      dateEnd: '',
+      dealershipId: '',
+      tags: [],
+    };
+    try {
+      if (typeof window !== 'undefined' && isRefresh) {
+        const saved = sessionStorage.getItem('super_admin_quotes_filters');
+        return saved ? JSON.parse(saved) : defaultFilters;
+      }
+      return defaultFilters;
+    } catch (_) {
+      return defaultFilters;
+    }
   });
+
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (typeof window !== 'undefined' && isRefresh) {
+      return sessionStorage.getItem('super_admin_quotes_search') || '';
+    }
+    return '';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem('super_admin_quotes_filters', JSON.stringify(filters));
+    sessionStorage.setItem('super_admin_quotes_search', searchTerm);
+    sessionStorage.setItem('app_last_path', pathname);
+  }, [filters, searchTerm, pathname]);
+
+  const [recentlyChangedIds, setRecentlyChangedIds] = useState(new Set());
   const [tempFilters, setTempFilters] = useState(filters);
 
   useEffect(() => {
@@ -62,16 +115,32 @@ export default function SuperAdminQuotes() {
   );
 
   const { data: quotesData = [], isLoading, isFetching } = useQuotes(params);
-  const updateQuoteMutation = useUpdateQuote(); // Keep for generic edits if needed
-  const overrideStatusMutation = useOverrideStatus(); // Use for status changes
+  const overrideStatusMutation = useOverrideStatus();
   const deleteQuoteMutation = useDeleteQuote();
+
+  const handleRemoveFilter = (key) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (key === 'tags') next.tags = [];
+      else if (key === 'dateRange') {
+        next.dateStart = null;
+        next.dateEnd = null;
+      } else if (key === 'priceRange') {
+        next.minPrice = '';
+        next.maxPrice = '';
+      } else {
+        next[key] = '';
+      }
+      return next;
+    });
+  };
 
   const [dealershipOptions, setDealershipOptions] = useState([]);
 
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-        const options = await dealershipService.getDealershipOptions();
+        const options = await dealershipService.getDealershipOptions(true);
         setDealershipOptions(options);
       } catch (error) {
         console.error('Failed to fetch dealerships', error);
@@ -89,11 +158,58 @@ export default function SuperAdminQuotes() {
   const filteredQuotes = React.useMemo(() => {
     let list = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
 
-    // Apply filters client-side
+    // 1. Search Text (Manual override for ID search)
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      const cleanSearch = lowerSearch.replace(/^#/, '').trim();
+
+      list = list.filter((q) => {
+        const customer = (q.customer_name || q.clientName || '').toLowerCase();
+        const vehicleInfo = q.vehicle_info || q.vehicle_details || {};
+        const vehicle = (
+          q.vehicle ||
+          `${vehicleInfo.year || ''} ${vehicleInfo.make || ''} ${vehicleInfo.model || ''}`
+        ).toLowerCase();
+        const amount = (q.amount || q.quote_amount || q.price || '').toString();
+        const dealership = (q.dealership?.name || q.dealershipName || '').toLowerCase();
+
+        // Quote ID Search Logic
+        const fullId = (q.id || '').toString().toLowerCase();
+        const shortId = fullId.split('-')[0];
+
+        return (
+          customer.includes(lowerSearch) ||
+          vehicle.includes(lowerSearch) ||
+          amount.includes(lowerSearch) ||
+          dealership.includes(lowerSearch) ||
+          (cleanSearch && (fullId.includes(cleanSearch) || shortId.includes(cleanSearch)))
+        );
+      });
+    }
+
+    // 2. Apply filters client-side
     if (filters.status) {
-      list = list.filter(
-        (q) => (q.status || 'pending').toLowerCase() === filters.status.toLowerCase()
-      );
+      list = list.filter((q) => {
+        const quoteStatus =
+          q.status === 'converted' || q.status === 'sold' || q.status === ''
+            ? 'sold_out'
+            : (q.status || 'pending').toLowerCase();
+        const filterStatus = filters.status.toLowerCase();
+        if (quoteStatus === filterStatus) return true;
+        if (
+          filterStatus === 'sold_out' &&
+          (quoteStatus === 'converted' ||
+            quoteStatus === 'sold' ||
+            quoteStatus === 'sold_out' ||
+            quoteStatus === '')
+        )
+          return true;
+
+        // If the item was recently changed, KEEP it in the UI
+        if (recentlyChangedIds.has(q.id)) return true;
+
+        return false;
+      });
     }
 
     if (filters.tags && filters.tags.length > 0) {
@@ -126,16 +242,20 @@ export default function SuperAdminQuotes() {
       return Number(String(val).replace(/[^\d.]/g, '')) || 0;
     };
 
-    if (filters.minPrice) {
-      list = list.filter(
-        (q) => parseNumeric(q.amount || q.quote_amount || q.price || 0) >= Number(filters.minPrice)
-      );
+    if (filters.minPrice !== '' && filters.minPrice !== null) {
+      const minVal = Number(filters.minPrice);
+      list = list.filter((q) => {
+        const val = parseNumeric(q.amount || q.quote_amount || q.price);
+        return val >= minVal;
+      });
     }
 
-    if (filters.maxPrice) {
-      list = list.filter(
-        (q) => parseNumeric(q.amount || q.quote_amount || q.price || 0) <= Number(filters.maxPrice)
-      );
+    if (filters.maxPrice !== '' && filters.maxPrice !== null) {
+      const maxVal = Number(filters.maxPrice);
+      list = list.filter((q) => {
+        const val = parseNumeric(q.amount || q.quote_amount || q.price);
+        return val <= maxVal;
+      });
     }
 
     if (filters.dealershipId) {
@@ -145,107 +265,75 @@ export default function SuperAdminQuotes() {
     }
 
     const mapped = list.map((q) => {
-      const vehicle = q.vehicle_details || q.vehicle_info || {};
-      const amountVal = parseNumeric(q.quote_amount || q.amount || q.price || 0);
-
+      const vehicle_info = q.vehicle_info || q.vehicle_details || {};
+      const amountVal = parseNumeric(q.amount || q.quote_amount || q.price || 0);
       return {
         ...q,
         id: q.id,
         customer_name: q.customer_name || q.clientName || 'Unknown',
-        vehicle_details: vehicle,
-        quote_amount: amountVal,
-        status: (q.status || 'pending').toLowerCase(),
-        created_at: q.created_at || q.date || new Date().toISOString(),
-        date: new Date(q.created_at || q.date || Date.now()).toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        }),
-        vehicle_summary:
-          `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'N/A',
-        dealership_name: q.dealership?.name || q.dealership_name || 'Unknown Dealership',
-        dealership_id: (q.dealership?.id || q.dealership_id || q.dealership || '').toString(),
+        vehicle_info: vehicle_info,
+        amount: amountVal,
+        status:
+          q.status === 'converted' || q.status === 'sold' || q.status === ''
+            ? 'sold_out'
+            : (q.status || 'pending').toLowerCase(),
+        date: q.created_at || q.date || new Date().toISOString(),
+        clientName: q.customer_name || q.clientName || 'Unknown',
+        vehicle:
+          `${vehicle_info.year || ''} ${vehicle_info.make || ''} ${vehicle_info.model || ''}`.trim() ||
+          'N/A',
+        price: amountVal,
+        dealershipName: q.dealership?.name || q.dealership_name || 'Unknown Dealership',
+        dealershipId: (q.dealership?.id || q.dealership_id || q.dealership || '').toString(),
       };
     });
 
     return mapped;
-  }, [quotesData, filters]);
+  }, [quotesData, filters, recentlyChangedIds, searchTerm]);
 
-  const stats = React.useMemo(() => {
-    const list = filteredQuotes;
+  const discoveredTags = React.useMemo(() => {
+    const list = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
+    const tagsMap = new Map();
+    list.forEach((q) => {
+      (q.tags || []).forEach((tag) => {
+        const id = tag.id || tag;
+        if (id) {
+          tagsMap.set(id, typeof tag === 'object' ? tag : { id, name: id });
+        }
+      });
+    });
+    return Array.from(tagsMap.values());
+  }, [quotesData]);
+
+  const stats = useMemo(() => {
+    const fullList = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
     const parseNumeric = (val) => {
       if (typeof val === 'number') return val;
       if (!val) return 0;
       return Number(String(val).replace(/[^\d.]/g, '')) || 0;
     };
-    const totalValue = list.reduce(
-      (sum, q) => sum + (parseNumeric(q.quote_amount || q.amount || q.price) || 0),
-      0
-    );
-    const pendingCount = list.filter((q) => (q.status || '').toLowerCase() === 'pending').length;
-    const approvedCount = list.filter((q) => (q.status || '').toLowerCase() === 'approved').length;
-    const conversionRate = list.length > 0 ? ((approvedCount / list.length) * 100).toFixed(1) : 0;
+    const activeStatuses = ['pending', 'approved', 'sold', 'sold_out', 'converted', ''];
+    const totalValue = fullList.reduce((sum, q) => {
+      const status = (q.status || '').toLowerCase();
+      if (!activeStatuses.includes(status)) return sum;
+      return sum + (parseNumeric(q.amount || q.quote_amount || q.price) || 0);
+    }, 0);
 
-    return { totalValue, pendingCount, approvedCount, conversionRate };
-  }, [filteredQuotes]);
+    const pendingCount = fullList.filter(
+      (q) => (q.status || '').toLowerCase() === 'pending'
+    ).length;
+    const approvedCount = fullList.filter(
+      (q) => (q.status || '').toLowerCase() === 'approved'
+    ).length;
+    const soldCount = fullList.filter((q) =>
+      ['sold', 'sold_out', 'converted', ''].includes((q.status || '').toLowerCase())
+    ).length;
+    const rejectedCount = fullList.filter(
+      (q) => (q.status || '').toLowerCase() === 'rejected'
+    ).length;
 
-  const handleApprove = async (quote) => {
-    try {
-      await overrideStatusMutation.mutateAsync({
-        id: quote.id,
-        status: 'approved',
-        reason: 'Super Admin manual approval',
-      });
-      setOpenActionMenu(null);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleReject = (quote) => {
-    Swal.fire({
-      title: 'Reject Quote?',
-      text: 'Please provide a reason for rejection:',
-      input: 'text',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: 'rgb(var(--color-error))',
-      cancelButtonColor: 'rgb(var(--color-text-muted))',
-      confirmButtonText: 'Yes, reject it!',
-      inputValidator: (value) => {
-        if (!value) {
-          return 'You need to write a reason!';
-        }
-      },
-    }).then(async (result) => {
-      if (result.isConfirmed) {
-        try {
-          await overrideStatusMutation.mutateAsync({
-            id: quote.id,
-            status: 'rejected',
-            reason: result.value,
-          });
-          setOpenActionMenu(null);
-        } catch (error) {
-          console.error(error);
-        }
-      }
-    });
-  };
-
-  const handleStatusChange = async (quote, newStatus) => {
-    try {
-      const apiStatus = newStatus.toLowerCase();
-      await overrideStatusMutation.mutateAsync({
-        id: quote.id,
-        status: apiStatus,
-        reason: 'Manual status update via dashboard',
-      });
-      setOpenActionMenu(null);
-    } catch (error) {
-      console.error(error);
-    }
-  };
+    return { totalValue, pendingCount, approvedCount, soldCount, rejectedCount };
+  }, [quotesData]);
 
   const handleDelete = (quote) => {
     Swal.fire({
@@ -268,74 +356,6 @@ export default function SuperAdminQuotes() {
     });
   };
 
-  const handleBulkApprove = async () => {
-    if (selectedQuoteIds.length === 0) return;
-
-    const result = await Swal.fire({
-      title: 'Approve Selected Quotes?',
-      text: `Are you sure you want to approve ${selectedQuoteIds.length} quotes?`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: 'rgb(var(--color-success))',
-      confirmButtonText: 'Yes, approve all',
-    });
-
-    if (result.isConfirmed) {
-      try {
-        Swal.fire({
-          title: 'Approving...',
-          allowOutsideClick: false,
-          didOpen: () => Swal.showLoading(),
-        });
-
-        await Promise.all(
-          selectedQuoteIds.map((id) =>
-            overrideStatusMutation.mutateAsync({
-              id,
-              status: 'approved',
-              reason: 'Bulk approval',
-            })
-          )
-        );
-
-        setSelectedQuoteIds([]);
-        Swal.fire('Approved!', 'Selected quotes have been approved.', 'success');
-      } catch (error) {
-        Swal.fire('Error', 'Failed to approve some quotes.', 'error');
-      }
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedQuoteIds.length === 0) return;
-
-    const result = await Swal.fire({
-      title: 'Delete Selected Quotes?',
-      text: `This will permanently delete ${selectedQuoteIds.length} quotes. This action cannot be undone!`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: 'rgb(var(--color-error))',
-      confirmButtonText: 'Yes, delete all',
-    });
-
-    if (result.isConfirmed) {
-      try {
-        Swal.fire({
-          title: 'Deleting...',
-          allowOutsideClick: false,
-          didOpen: () => Swal.showLoading(),
-        });
-
-        await Promise.all(selectedQuoteIds.map((id) => deleteQuoteMutation.mutateAsync(id)));
-
-        setSelectedQuoteIds([]);
-        Swal.fire('Deleted!', 'Selected quotes have been deleted.', 'success');
-      } catch (error) {
-        Swal.fire('Error', 'Failed to delete some quotes.', 'error');
-      }
-    }
-  };
-
   const clearFilters = () => {
     const initialFilters = {
       status: '',
@@ -348,203 +368,264 @@ export default function SuperAdminQuotes() {
     };
     setFilters(initialFilters);
     setTempFilters(initialFilters);
+    setSearchTerm('');
   };
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-2">
-        <div>
-          <h1 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-            Global Quote <span className="text-[#6a7150cb] font-bold">Management</span>
-          </h1>
-          <p className="text-[rgb(var(--color-text-muted))] text-sm mt-1">
-            Oversee and manage quotes across all dealerships
-          </p>
-        </div>
-        <button
-          onClick={() => router.push('/quotes/new')}
-          className="flex items-center gap-2 px-6 py-2.5 bg-[#CCFF00] text-black rounded-xl font-bold shadow-sm hover:shadow-md transition-all active:scale-95"
-        >
-          <Plus size={20} />
-          <span>Create New Quote</span>
-        </button>
-      </div>
+      <PageHeader
+        title="Global Quote Management"
+        subtitle="Oversee and manage quotes across all dealerships"
+        stats={[
+          <StatCard
+            key="total-value"
+            title="Total Value"
+            value={`$${Math.round(stats.totalValue || 0).toLocaleString()}`}
+            icon={<DollarSign size={20} />}
+            accent="rgb(var(--color-success))"
+            helperText="Potential revenue"
+          />,
+          <StatCard
+            key="pending"
+            title="Pending"
+            value={stats.pendingCount || 0}
+            icon={<Clock size={20} />}
+            accent="rgb(var(--color-warning))"
+            helperText="Requires Action"
+          />,
+          <StatCard
+            key="approved"
+            title="Approved"
+            value={stats.approvedCount || 0}
+            icon={<CheckCircle size={20} />}
+            accent="rgb(var(--color-primary))"
+            helperText="Ready for Sale"
+          />,
+          <StatCard
+            key="sold"
+            title="Sold Out"
+            value={stats.soldCount || 0}
+            icon={<CheckCircle size={20} />}
+            accent="rgb(var(--color-success))"
+            helperText="Completed quotes"
+          />,
+          <StatCard
+            key="rejected"
+            title="Rejected"
+            value={stats.rejectedCount || 0}
+            icon={<X size={20} />}
+            accent="rgb(var(--color-error))"
+            helperText="Lost opportunities"
+          />,
+        ]}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total Pipelines"
-          value={`$${Number(stats.totalValue || 0).toLocaleString()}`}
-          icon={<DollarSign size={20} className="text-black" />}
-          trend="+12.5%"
-          trendUp={true}
-          description="vs last month"
-          className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
-          iconClassName="bg-[#CCFF00] p-2 rounded-xl"
-        />
-        <StatCard
-          title="Pending Review"
-          value={stats.pendingCount || 0}
-          icon={<Clock size={20} className="text-white" />}
-          trend="+5"
-          trendUp={true}
-          description="New requests"
-          className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
-          iconClassName="bg-[#8b5cf6] p-2 rounded-xl"
-        />
-        <StatCard
-          title="Approved Quotes"
-          value={stats.approvedCount || 0}
-          icon={<CheckCircle size={20} className="text-white" />}
-          trend="+8%"
-          trendUp={true}
-          description="Approval rate"
-          className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
-          iconClassName="bg-[#ec4899] p-2 rounded-xl"
-        />
-        <StatCard
-          title="Conversion Rate"
-          value={`${stats.conversionRate || 0}%`}
-          icon={<FileText size={20} className="text-white" />}
-          trend="+2.4%"
-          trendUp={true}
-          description="Success metrics"
-          className="bg-[rgb(var(--color-surface))] rounded-3xl border-0 shadow-sm hover:shadow-md transition-all"
-          iconClassName="bg-[#06b6d4] p-2 rounded-xl"
-        />
-      </div>
+      <div className="relative">
+        <div className="p-0">
+          <div className="relative">
+            {isFetching && !isLoading && (
+              <div className="absolute inset-x-0 top-0 h-1 bg-[rgb(var(--color-primary))/0.2] overflow-hidden z-10">
+                <div className="h-full bg-[rgb(var(--color-primary))] animate-progress-buffer w-1/3"></div>
+              </div>
+            )}
+            <DataTable
+              data={filteredQuotes}
+              manualFiltering={true}
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search quotes by customer, vehicle, dealership, or quote ID..."
+              sortKeys={['date', 'price', 'status']}
+              onFilterClick={() => setIsFilterOpen(true)}
+              onClearFilters={clearFilters}
+              onRemoveExternalFilter={handleRemoveFilter}
+              hideFilterDropdowns={true}
+              externalFilters={{
+                dealershipId: filters.dealershipId,
+                status: filters.status,
+                dateRange:
+                  filters.dateStart || filters.dateEnd
+                    ? `${filters.dateStart ? dayjs(filters.dateStart).format('MMM D') : ''} - ${filters.dateEnd ? dayjs(filters.dateEnd).format('MMM D') : ''}`
+                    : '',
+                priceRange:
+                  filters.minPrice || filters.maxPrice
+                    ? `${filters.minPrice ? `$${filters.minPrice}` : ''} - ${filters.maxPrice ? `$${filters.maxPrice}` : ''}`
+                    : '',
+                tags: filters.tags,
+              }}
+              filterOptions={[
+                { key: 'dealershipId', label: 'Dealership', options: dealershipOptions },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  options: [
+                    { value: 'pending', label: 'Pending' },
+                    { value: 'approved', label: 'Approved' },
+                    { value: 'rejected', label: 'Rejected' },
+                    { value: 'archived', label: 'Archived' },
+                    { value: 'sold_out', label: 'Sold Out' },
+                  ],
+                },
+                {
+                  key: 'tags',
+                  label: 'Tags',
+                  options: discoveredTags.map((t) => ({
+                    label: t.name || t.id,
+                    value: t.id,
+                  })),
+                },
+              ]}
+              showClearFilter={
+                filters.status !== '' ||
+                (filters.dateStart !== null && filters.dateStart !== '') ||
+                (filters.dateEnd !== null && filters.dateEnd !== '') ||
+                filters.minPrice !== '' ||
+                filters.maxPrice !== '' ||
+                (filters.tags && filters.tags.length > 0) ||
+                filters.dealershipId !== ''
+              }
+              columns={[
+                {
+                  header: 'Dealership',
+                  sortable: true,
+                  sortKey: 'dealershipName',
+                  accessor: (row) => (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-[rgb(var(--color-background))] rounded-lg border border-[rgb(var(--color-border))] text-[rgb(var(--color-text-muted))]">
+                        <Building2 size={16} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-[rgb(var(--color-text))] text-sm">
+                          {row.dealershipName}
+                        </span>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  header: 'Client',
+                  type: 'avatar',
+                  sortable: true,
+                  sortKey: 'customer_name',
+                  config: (row) => ({
+                    name: row.customer_name,
+                    subtext: row.created_at ? formatDate(row.created_at) : 'N/A',
+                  }),
+                },
+                {
+                  header: 'Vehicle',
+                  sortable: true,
+                  sortKey: 'vehicle_info.make',
+                  accessor: (row) => (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-[rgb(var(--color-background))] rounded-lg border border-[rgb(var(--color-border))] text-gray-500">
+                        <Car size={16} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-[rgb(var(--color-text))] text-sm">
+                          {row.vehicle_info
+                            ? `${row.vehicle_info.year} ${row.vehicle_info.make} ${row.vehicle_info.model}`
+                            : 'N/A'}
+                        </span>
+                        {/* {row.vin && (
+                                                    <span className="text-[10px] text-[rgb(var(--color-text-muted))] uppercase tracking-wide bg-[rgb(var(--color-background))] px-1.5 py-0.5 rounded-md w-fit mt-0.5">
+                                                        VIN: {row.vin}
+                                                    </span>
+                                                )} */}
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  header: 'Amount',
+                  type: 'currency',
+                  sortable: true,
+                  sortKey: 'amount',
+                  accessor: 'amount',
+                },
+                // {
+                //     header: 'Tags',
+                //     accessor: (row) => <TagList tags={row.tags} limit={2} />,
+                //     className: 'min-w-[120px]'
+                // },
+                {
+                  header: 'Status',
+                  type: 'badge',
+                  sortable: true,
+                  sortKey: 'status',
+                  accessor: 'status',
+                  config: {
+                    green: ['approved'],
+                    orange: ['pending'],
+                    red: ['rejected'],
+                    purple: ['sold', 'sold_out'],
+                    gray: ['expired'],
+                  },
+                },
+                {
+                  header: 'Actions',
+                  className: 'text-center',
+                  headerClassName: 'text-center',
+                  accessor: (row) => (
+                    <div className="relative flex justify-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Convert DOMRect to plain object to ensure properties are preserved in state
+                          const domRect = e.currentTarget.getBoundingClientRect();
+                          const rect = {
+                            top: domRect.top,
+                            bottom: domRect.bottom,
+                            left: domRect.left,
+                            right: domRect.right,
+                            width: domRect.width,
+                            height: domRect.height,
+                            mouseX: e.clientX,
+                            mouseY: e.clientY,
+                          };
 
-      <div className="bg-[rgb(var(--color-surface))] rounded-3xl shadow-sm border border-[rgb(var(--color-border))] overflow-hidden">
-        {isFetching && !isLoading && (
-          <div className="absolute inset-x-0 top-0 h-1 bg-[rgb(var(--color-primary))/0.2] overflow-hidden z-10">
-            <div className="h-full bg-[rgb(var(--color-primary))] animate-progress-buffer w-1/3"></div>
+                          // Manual positioning with overflow handling
+                          // w-48 is 192px. Align right edge of menu with right edge of trigger.
+                          let position = { top: rect.bottom + 4, left: rect.right - 192 };
+
+                          // Check if menu fits below (assuming ~250px height)
+                          const spaceBelow = window.innerHeight - rect.bottom;
+                          if (spaceBelow < 250) {
+                            // Flip to top - Anchor to bottom of menu to top of button
+                            const bottom = window.innerHeight - rect.top + 4;
+                            position = { bottom, left: rect.right - 192 };
+                          }
+
+                          if (openActionMenu?.id === row.id) {
+                            setOpenActionMenu(null);
+                          } else {
+                            setOpenActionMenu({
+                              id: row.id,
+                              position,
+                              align: 'end',
+                            });
+                          }
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))]'}`}
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                    </div>
+                  ),
+                },
+              ]}
+              highlightId={localHighlightId}
+              itemsPerPage={preferences.items_per_page || 10}
+              persistenceKey="super-admin-quotes"
+            />
           </div>
-        )}
-        <DataTable
-          data={filteredQuotes}
-          selectedIds={selectedQuoteIds}
-          onSelectionChange={setSelectedQuoteIds}
-          searchKeys={['customer_name', 'vehicle_summary', 'dealership_name', 'quote_amount']}
-          sortKeys={['date', 'quote_amount', 'status']}
-          onFilterClick={() => setIsFilterOpen(true)}
-          onClearFilters={clearFilters}
-          showClearFilter={
-            filters.status !== '' ||
-            (filters.dateStart !== null && filters.dateStart !== '') ||
-            (filters.dateEnd !== null && filters.dateEnd !== '') ||
-            filters.minPrice !== '' ||
-            filters.maxPrice !== '' ||
-            filters.dealershipId !== '' ||
-            (filters.tags && filters.tags.length > 0)
-          }
-          columns={[
-            {
-              header: 'Dealership',
-              sortable: true,
-              sortKey: 'dealership_name',
-              accessor: (row) => (
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[rgb(var(--color-background))] rounded-lg border border-[rgb(var(--color-border))] text-[rgb(var(--color-text-muted))]">
-                    <Building2 size={16} />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-[rgb(var(--color-text))] text-sm">
-                      {row.dealership_name}
-                    </span>
-                    <span className="text-[10px] text-[rgb(var(--color-text-muted))] uppercase tracking-wide bg-[rgb(var(--color-background))] px-1.5 py-0.5 rounded-md w-fit mt-0.5">
-                      ID: {String(row.dealership_id || row.id).slice(-4)}
-                    </span>
-                  </div>
-                </div>
-              ),
-            },
-            {
-              header: 'Client',
-              type: 'avatar',
-              sortable: true,
-              sortKey: 'customer_name',
-              config: (row) => ({
-                name: row.customer_name,
-                subtext: row.created_at ? formatDate(row.created_at) : 'N/A',
-              }),
-            },
-            {
-              header: 'Vehicle',
-              accessor: 'vehicle_summary',
-              sortable: true,
-              sortKey: 'vehicle_summary',
-              className: 'text-sm',
-            },
-            {
-              header: 'Amount',
-              type: 'currency',
-              sortable: true,
-              sortKey: 'quote_amount',
-              accessor: 'quote_amount',
-            },
-            {
-              header: 'Tags',
-              accessor: (row) => <TagList tags={row.tags} limit={2} />,
-              className: 'min-w-[120px]',
-            },
-            {
-              header: 'Status',
-              type: 'badge',
-              sortable: true,
-              sortKey: 'status',
-              accessor: 'status',
-              config: {
-                green: ['approved', 'sold'],
-                orange: ['pending'],
-                red: ['rejected'],
-                gray: ['archived'],
-              },
-            },
-            {
-              header: 'Actions',
-              className: 'text-center',
-              headerClassName: 'text-center',
-              accessor: (row) => (
-                <div className="relative flex justify-center">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const domRect = e.currentTarget.getBoundingClientRect();
-                      const triggerRect = {
-                        top: domRect.top,
-                        bottom: domRect.bottom,
-                        left: domRect.left,
-                        right: domRect.right,
-                        width: domRect.width,
-                        height: domRect.height,
-                      };
-
-                      if (openActionMenu?.id === row.id) {
-                        setOpenActionMenu(null);
-                      } else {
-                        setOpenActionMenu({
-                          id: row.id,
-                          triggerRect,
-                          align: 'end',
-                        });
-                      }
-                    }}
-                    className={`p-1.5 rounded-lg transition-colors ${openActionMenu?.id === row.id ? 'bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]' : 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-background))]'}`}
-                  >
-                    <MoreVertical size={16} />
-                  </button>
-                </div>
-              ),
-            },
-          ]}
-          itemsPerPage={preferences.items_per_page || 10}
-        />
+        </div>
       </div>
 
       {openActionMenu && (
         <ActionMenuPortal
           isOpen={!!openActionMenu}
           onClose={() => setOpenActionMenu(null)}
-          triggerRect={openActionMenu.triggerRect}
+          position={openActionMenu.position}
           align={openActionMenu.align}
         >
           {(() => {
@@ -555,68 +636,34 @@ export default function SuperAdminQuotes() {
               <>
                 <button
                   onClick={() => {
-                    router.push(`/quotes/${row.id}`);
-                    setOpenActionMenu(null);
+                    if (canView) {
+                      router.push(`/quotes/${row.id}`);
+                      setOpenActionMenu(null);
+                    }
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))] rounded-md transition-colors"
+                  disabled={!canView}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors rounded-md ${
+                    canView
+                      ? 'text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))]'
+                      : 'text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                  title={
+                    canView ? 'View Details' : "You don't have permission to view quote details."
+                  }
                 >
                   <Eye size={14} /> View Details
                 </button>
 
-                <button
-                  onClick={() => {
-                    router.push(`/quotes/${row.id}?edit=true`);
-                    setOpenActionMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-primary))]/5 hover:text-[rgb(var(--color-primary))] rounded-md transition-colors"
-                >
-                  <Edit size={14} /> Edit Quote
-                </button>
-
-                {row.status !== 'approved' && (
-                  <button
-                    onClick={() => {
-                      handleApprove(row);
-                      setOpenActionMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-success))]/5 hover:text-[rgb(var(--color-success))] rounded-md transition-colors"
-                  >
-                    <CheckCircle size={14} /> Approve Quote
-                  </button>
-                )}
-
-                {row.status !== 'rejected' && (
-                  <button
-                    onClick={() => {
-                      handleReject(row);
-                      setOpenActionMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-error))]/5 hover:text-[rgb(var(--color-error))] rounded-md transition-colors"
-                  >
-                    <X size={14} /> Reject Quote
-                  </button>
-                )}
-
-                {row.status !== 'pending' && (
-                  <button
-                    onClick={() => {
-                      handleStatusChange(row, 'Pending');
-                      setOpenActionMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-text-muted))] hover:bg-[rgb(var(--color-warning))]/5 hover:text-[rgb(var(--color-warning))] rounded-md transition-colors"
-                  >
-                    <Clock size={14} /> Mark as Pending
-                  </button>
-                )}
-
                 <div className="h-px bg-[rgb(var(--color-border))] my-1"></div>
 
                 <button
-                  onClick={() => {
-                    handleDelete(row);
-                    setOpenActionMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5 rounded-md transition-colors"
+                  onClick={() => canDeleteVal && handleDelete(row)}
+                  disabled={!canDeleteVal}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors rounded-md ${
+                    canDeleteVal
+                      ? 'text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/5'
+                      : 'text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
                 >
                   <Trash2 size={14} /> Delete
                 </button>
@@ -625,7 +672,6 @@ export default function SuperAdminQuotes() {
           })()}
         </ActionMenuPortal>
       )}
-
       <FilterDrawer
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
@@ -648,34 +694,43 @@ export default function SuperAdminQuotes() {
         <div className="space-y-6">
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Dealership</h3>
-            <select
+            <CustomSelect
               value={tempFilters.dealershipId}
               onChange={(e) =>
                 setTempFilters((prev) => ({ ...prev, dealershipId: e.target.value }))
               }
-              className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-            >
-              <option value="">All Dealerships</option>
-              {dealershipOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: 'All Dealerships' },
+                ...(Array.isArray(dealershipOptions)
+                  ? dealershipOptions
+                      .filter((d) => (d.value || d.id) && (d.label || d.name))
+                      .map((d) => ({
+                        value: String(d.value || d.id),
+                        label: String(d.label || d.name).trim(),
+                      }))
+                  : []),
+              ]}
+              placeholder="All Dealerships"
+              className="w-full"
+            />
           </div>
 
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-[rgb(var(--color-text))]">Status</h3>
-            <select
+            <CustomSelect
               value={tempFilters.status}
               onChange={(e) => setTempFilters((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--color-primary))/0.2]"
-            >
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
+              options={[
+                { value: '', label: 'Status' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'approved', label: 'Approved' },
+                { value: 'sold_out', label: 'Sold Out' },
+                { value: 'rejected', label: 'Rejected' },
+                { value: 'expired', label: 'Expired' },
+              ]}
+              placeholder="Status"
+              className="w-full"
+            />
           </div>
 
           <div className="space-y-3">
@@ -737,66 +792,16 @@ export default function SuperAdminQuotes() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <TagFilter
-              selectedTags={tempFilters.tags || []}
-              onChange={(tags) => setTempFilters((prev) => ({ ...prev, tags }))}
-              type="quote"
-              options={React.useMemo(() => {
-                const list = Array.isArray(quotesData) ? quotesData : quotesData.quotes || [];
-                const tagsMap = new Map();
-                list.forEach((q) => {
-                  (q.tags || []).forEach((tag) => {
-                    const id = tag.id || tag;
-                    if (id) {
-                      tagsMap.set(id, typeof tag === 'object' ? tag : { id, name: id });
-                    }
-                  });
-                });
-                return Array.from(tagsMap.values());
-              }, [quotesData])}
-            />
-          </div>
+          {/* <div className="space-y-3">
+                        <TagFilter
+                            selectedTags={tempFilters.tags || []}
+                            onChange={(tags) => setTempFilters(prev => ({ ...prev, tags }))}
+                            type="quote"
+                            options={discoveredTags}
+                        />
+                    </div> */}
         </div>
       </FilterDrawer>
-
-      {selectedQuoteIds.length > 0 && (
-        <div className="fixed bottom-0 left-0 lg:left-[280px] right-0 bg-[rgb(var(--color-surface))] border-t border-[rgb(var(--color-border))] p-4 md:p-6 z-50 shadow-xl">
-          <div className="flex flex-col md:flex-row items-center justify-between md:justify-center gap-4 md:gap-8 max-w-7xl mx-auto">
-            <span className="text-base font-medium text-[rgb(var(--color-text))] whitespace-nowrap">
-              <span className="font-bold text-[rgb(var(--color-primary))] text-lg">
-                {selectedQuoteIds.length}
-              </span>{' '}
-              <span className="hidden sm:inline">quotes</span> selected
-            </span>
-
-            <div className="hidden md:block h-8 w-px bg-[rgb(var(--color-border))]"></div>
-
-            <div className="flex flex-wrap justify-center items-center gap-3 md:gap-6 w-full md:w-auto">
-              <button
-                onClick={handleBulkApprove}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[rgb(var(--color-success))]/10 text-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/20 transition-colors font-medium text-sm whitespace-nowrap"
-                title="Approve Selected"
-              >
-                <CheckCircle size={18} /> Approve
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[rgb(var(--color-error))]/10 text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/20 transition-colors font-medium text-sm whitespace-nowrap"
-                title="Delete Selected"
-              >
-                <Trash2 size={18} /> Delete
-              </button>
-              <button
-                onClick={() => setSelectedQuoteIds([])}
-                className="md:ml-2 text-sm text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-primary))] hover:underline transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

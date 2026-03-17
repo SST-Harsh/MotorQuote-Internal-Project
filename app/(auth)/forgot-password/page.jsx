@@ -6,12 +6,12 @@ import { ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
 import Input from '../../../components/common/Input';
 import api from '../../../utils/api';
 import Swal from 'sweetalert2';
-
-import LanguageSwitcher from '../../../components/common/LanguageSwitcher';
-import { useTranslation } from '../../../context/LanguageContext';
+import { useConfig } from '../../../context/ConfigContext';
+import Image from 'next/image';
 
 export default function ForgotPassword() {
-  const { t } = useTranslation('auth');
+  const { config } = useConfig();
+  const { branding } = config;
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -25,8 +25,8 @@ export default function ForgotPassword() {
 
       Swal.fire({
         icon: 'success',
-        title: t('forgotPassword.checkInbox'),
-        text: t('forgotPassword.sentMessage') + ' ' + email,
+        title: 'Check your inbox',
+        text: 'A password reset link has been sent to ' + email,
         timer: 1500,
         showConfirmButton: false,
         position: 'top-end',
@@ -40,8 +40,8 @@ export default function ForgotPassword() {
       if (error.response && error.response.status === 404) {
         Swal.fire({
           icon: 'info',
-          title: t('messages.demoMode'),
-          text: t('messages.demoDesc'),
+          title: 'Demo Mode',
+          text: 'This feature is limited in demo mode. Please check your email for instructions.',
           timer: 2000,
           position: 'top-end',
           toast: true,
@@ -50,8 +50,8 @@ export default function ForgotPassword() {
       } else {
         Swal.fire({
           icon: 'error',
-          title: t('forgotPassword.failed'),
-          text: error.response?.data?.message || t('messages.unexpectedError'),
+          title: 'Request Failed',
+          text: error.response?.data?.message || 'An unexpected error occurred. Please try again.',
           timer: 3000,
           showConfirmButton: false,
           position: 'top-end',
@@ -67,34 +67,42 @@ export default function ForgotPassword() {
 
   return (
     <div className="flex min-h-screen bg-[#0B0F19] lg:bg-[rgb(var(--color-background))]">
-      {/* Floating Language Switcher */}
-      <div className="fixed top-6 right-6 z-50">
-        <LanguageSwitcher />
-      </div>
-
       <div className="hidden lg:flex lg:w-1/2 relative bg-[#0B0F19] text-white flex-col justify-between p-12 overflow-hidden">
         <div className="absolute inset-0 z-0 bg-gradient-to-br from-gray-900 via-[#111827] to-[rgb(var(--color-primary))] opacity-90"></div>
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-[rgb(var(--color-primary))] rounded-lg flex items-center justify-center font-bold">
-              M
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+              {branding.logoUrl ? (
+                <Image
+                  src={branding.logoUrl}
+                  alt={branding.appName}
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full bg-[rgb(var(--color-primary))] flex items-center justify-center font-bold text-white">
+                  {branding.appName.charAt(0)}
+                </div>
+              )}
             </div>
-            <span className="text-xl font-semibold tracking-wide">MotorQuote</span>
+            <span className="text-xl font-semibold tracking-wide">{branding.appName}</span>
           </div>
         </div>
 
         <div className="relative z-10 space-y-4 max-w-lg mb-20">
           <h1 className="text-4xl font-bold leading-tight">
-            {t('forgotPassword.heroTitle')} <br />
-            <span className="text-[rgb(var(--color-info))]">
-              {t('forgotPassword.heroSubtitle')}
-            </span>
+            Forgot your password? <br />
+            <span className="text-[rgb(var(--color-info))]">We&apos;ve got you covered.</span>
           </h1>
-          <p className="text-gray-400 text-lg leading-relaxed">{t('forgotPassword.heroDesc')}</p>
+          <p className="text-gray-400 text-lg leading-relaxed">
+            Enter your email address and we&apos;ll send you a link to reset your password and get
+            you back into your account.
+          </p>
         </div>
 
         <div className="relative z-10 text-sm text-gray-500">
-          {t('login.allRightsReserved', { companyName: 'MotorQuote Ltd.' })}
+          © {new Date().getFullYear()} {branding.appName}. All rights reserved.
         </div>
       </div>
 
@@ -107,15 +115,13 @@ export default function ForgotPassword() {
             className="inline-flex items-center gap-2 text-sm font-medium text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors mb-8"
           >
             <ArrowLeft size={16} />
-            {t('common.backToLogin')}
+            Back to Login
           </Link>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-              {t('forgotPassword.title')}
-            </h2>
+            <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">Reset Password</h2>
             <p className="text-[rgb(var(--color-text-muted))] mt-2 text-sm leading-relaxed">
-              {t('forgotPassword.subtitle')}
+              No worries, it happens. Enter your email to begin.
             </p>
           </div>
 
@@ -125,25 +131,25 @@ export default function ForgotPassword() {
                 <CheckCircle2 size={24} />
               </div>
               <h3 className="text-lg font-bold text-[rgb(var(--color-text))] mb-2">
-                {t('forgotPassword.checkInbox')}
+                Check your inbox
               </h3>
               <p className="text-sm text-[rgb(var(--color-text-muted))] mb-6">
-                {t('forgotPassword.sentMessage')} <br />
+                A password reset link has been sent to <br />
                 <span className="font-semibold text-[rgb(var(--color-text))]">{email}</span>
               </p>
               <button
                 onClick={() => setIsSubmitted(false)}
                 className="text-sm font-semibold text-[rgb(var(--color-primary))] hover:underline"
               >
-                {t('forgotPassword.tryDifferent')}
+                Try a different email
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <Input
-                label={t('login.emailLabel')}
+                label="Email Address"
                 type="email"
-                placeholder={t('login.emailPlaceholder')}
+                placeholder="Enter your email"
                 icon={Mail}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -178,10 +184,10 @@ export default function ForgotPassword() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    {t('forgotPassword.sending')}
+                    Sending...
                   </span>
                 ) : (
-                  t('forgotPassword.submit')
+                  'Send Reset Link'
                 )}
               </button>
             </form>

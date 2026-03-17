@@ -9,9 +9,7 @@ const SuperAdminDealerships = dynamic(
     ssr: false,
   }
 );
-const AdminDealerships = dynamic(() => import('@/components/views/dealerships/AdminDealerships'), {
-  ssr: false,
-});
+const DealerDealerships = dynamic(() => import('@/components/views/dealerships/DealerDealerships'));
 
 export default function DealershipsPage() {
   const { user } = useAuth();
@@ -23,15 +21,8 @@ export default function DealershipsPage() {
   switch (user.role) {
     case 'super_admin':
       return <SuperAdminDealerships />;
-    case 'admin':
-      return <AdminDealerships />;
-    case 'dealer':
     case 'dealer_manager':
-      return (
-        <div className="p-8 text-center text-gray-500">
-          Dealership profile for Dealer role coming soon...
-        </div>
-      );
+      return <DealerDealerships />;
     default:
       return (
         <div className="p-8 text-center text-red-500">
